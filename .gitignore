@@ -1,1 +1,6 @@
-Lab 5/Lab 5/Debug
+CollegeBound/CollegeBound/Debug
+*.atsuo
+*.cproj
+*.atsln
+TcfTransactionLog.csv
+*.c~
