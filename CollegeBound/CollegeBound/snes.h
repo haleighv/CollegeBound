@@ -27,9 +27,9 @@
 #define CLK          1        //PB1
 #define DATA         2        //PB2
 
-#define LATCH_TIME   //12       //time [us] for the latch signal
-#define CLK_TIME     //5.6      //time [us] for 1/2 the clock (50% duty)
-#define NUM_BTNS     //12       //the total number of buttons on the controller
+#define LATCH_TIME   191//12       //time [us] for the latch signal
+#define CLK_TIME     84//5.6      //time [us] for 1/2 the clock (50% duty)
+#define NUM_BTNS     12       //the total number of buttons on the controller
 
 #define SNES_R_BTN		(1<<0)
 #define SNES_L_BTN		(1<<1)
@@ -59,5 +59,5 @@ xQueueHandle xSnesDataQueue;
 //----------------------------Function Prototypes----------------------------//
 
 void snesInit();
-uint8_t snesData();
+uint16_t snesData();
 #endif // _SNES_H_

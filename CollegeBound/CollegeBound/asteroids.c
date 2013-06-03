@@ -61,7 +61,7 @@ typedef struct object_s {
 //#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
-#define INITIAL_ASTEROIDS 5
+#define INITIAL_ASTEROIDS 1
 #define SCREEN_W 800
 #define SCREEN_H 600
 
@@ -71,8 +71,8 @@ typedef struct object_s {
 #define BULLET_DELAY_MS 500
 #define BULLET_LIFE_MS  1000
 
-#define SHIP_SIZE 24
-#define BULLET_SIZE 6
+#define SHIP_SIZE 50
+#define BULLET_SIZE 26
 #define AST_SIZE_3 100
 #define AST_SIZE_2 40
 #define AST_SIZE_1 15
@@ -158,6 +158,8 @@ void inputTask(void *vParam) {
      * ship.accel stores if the ship is moving
      * ship.a_vel stores which direction the ship is moving in
      */
+	vTaskDelay(5000/portTICK_RATE_MS);
+	
 	// variable to hold ticks value of last task run
 	portTickType xLastWakeTime;
 	
@@ -171,9 +173,14 @@ void inputTask(void *vParam) {
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
 		controller_data = snesData();
+		DDRF = 0xFF;
+		PORTF = ((controller_data>>4) & 0xFF);
+		
+		
+		
 		if(controller_data & SNES_LEFT_BTN)
 			ship.a_vel = +SHIP_AVEL;
-		else if(controller_data & SNES_LEFT_BTN)
+		else if(controller_data & SNES_RIGHT_BTN)
 			ship.a_vel = -SHIP_AVEL;
 		else
 			ship.a_vel = 0;
@@ -465,16 +472,16 @@ int main(void) {
 		//snesData();
 		//_delay_ms(16);
 	//}
-	//usartMutex = xSemaphoreCreateMutex();
+	usartMutex = xSemaphoreCreateMutex();
 	
-	//vWindowCreate(SCREEN_W, SCREEN_H);
+	vWindowCreate(SCREEN_W, SCREEN_H);
 	
 	sei();
 	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
-	//xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
-	//xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
-	//xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
-	//xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, NULL);
+	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
+	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
+	xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, NULL);
 	
 	vTaskStartScheduler();
 	

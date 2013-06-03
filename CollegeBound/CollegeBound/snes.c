@@ -39,7 +39,7 @@ void snesInit()
 	//TIMSK4 |= (1<<OCIE4A);
 }
 
-uint8_t snesData()
+uint16_t snesData()
 {
 	/**
 	* This is a table for which buttons correspond to the
