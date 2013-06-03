@@ -28,6 +28,7 @@
 #include "semphr.h"
 #include "graphics.h"
 #include "usart.h"
+#include "snes.h"
 
 //Asteroid images
 const char *astImages[] = {
@@ -55,6 +56,9 @@ typedef struct object_s {
 	struct object_s *next;
 } object;
 
+
+
+//#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
 #define INITIAL_ASTEROIDS 5
@@ -102,6 +106,8 @@ static xSemaphoreHandle usartMutex;
 
 static object ship;
 
+uint8_t fire_button = 0;
+
 //linked lists for asteroids and bullets
 static object *bullets = NULL;
 static object *asteroids = NULL;
@@ -117,6 +123,27 @@ uint16_t sizeToPix(int8_t size);
 object *createBullet(float x, float y, float velx, float vely, object *nxt);
 void spawnAsteroid(point *pos, uint8_t size);
 
+
+//void controllerTask(void *vParam) {
+	//// variable to hold ticks value of last task run
+	//portTickType xLastWakeTime;
+	//
+	//// Initialize the xLastWakeTime variable with the current time.
+	//xLastWakeTime = xTaskGetTickCount();
+	//snesInit()
+	//
+	//for(;;)
+	//{
+		//uint16_t controller_data;
+		//snesInit();
+		//
+		//while (1) {
+			////xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
+			//controller_data = snesData();
+		//vTaskDelay(250/portTICK_RATE_MS);
+	//}
+//}	
+//
 /*------------------------------------------------------------------------------
  * Function: inputTask
  *
@@ -131,18 +158,35 @@ void inputTask(void *vParam) {
      * ship.accel stores if the ship is moving
      * ship.a_vel stores which direction the ship is moving in
      */
+	// variable to hold ticks value of last task run
+	portTickType xLastWakeTime;
+	
+	// Initialize the xLastWakeTime variable with the current time.
+	xLastWakeTime = xTaskGetTickCount();
+	
+	
+	uint16_t controller_data; 
+	snesInit();
+	
     while (1) {
-		if(LEFT_BUTTON)
+		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
+		controller_data = snesData();
+		if(controller_data & SNES_LEFT_BTN)
 			ship.a_vel = +SHIP_AVEL;
-		else if(RIGHT_BUTTON)
+		else if(controller_data & SNES_LEFT_BTN)
 			ship.a_vel = -SHIP_AVEL;
 		else
 			ship.a_vel = 0;
 			
-		if(ACCEL_BUTTON)
+		if(controller_data & SNES_B_BTN)
 			ship.accel = SHIP_ACCEL;
 		else
 			 ship.accel =0;
+		
+		if(controller_data & SNES_Y_BTN)
+			 fire_button = 1;
+			
+		vTaskDelay(17/portTICK_RATE_MS);
 	}
 }
 
@@ -171,7 +215,8 @@ void bulletTask(void *vParam) {
 	xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
-	    if(SHOOT_BUTTON) {
+	    if(fire_button) {
+			fire_button = 0;
 		    xSemaphoreTake(usartMutex, portMAX_DELAY);
 			 
           //Make a new bullet and add to linked list
@@ -414,18 +459,22 @@ void drawTask(void *vParam) {
 int main(void) {
 	DDRB = 0x00;
 	TCCR2A = _BV(CS00); 
+	//snesInit();
+	//while(1)
+	//{
+		//snesData();
+		//_delay_ms(16);
+	//}
+	//usartMutex = xSemaphoreCreateMutex();
 	
-	usartMutex = xSemaphoreCreateMutex();
-	
-	vWindowCreate(SCREEN_W, SCREEN_H);
+	//vWindowCreate(SCREEN_W, SCREEN_H);
 	
 	sei();
-	
-	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 1, &inputTaskHandle);
-	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
-	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
-	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
-	xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, NULL);
+	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
+	//xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+	//xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
+	//xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
+	//xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, NULL);
 	
 	vTaskStartScheduler();
 	
