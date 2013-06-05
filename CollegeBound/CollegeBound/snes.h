@@ -21,8 +21,12 @@
 
 #define SNES_1P_MODE 1
 #define SNES_2P_MODE 2
+//
+//#define SNES_DDR     DDRA
+//#define SNES_PORT    PORTA
+//#define SNES_PIN     PINA
 
-//uses PORTA for Player2
+//uses PORTA for Player1
 #define SNES_DDR_P1     DDRA
 #define SNES_PORT_P1    PORTA
 #define SNES_PIN_P1     PINA
