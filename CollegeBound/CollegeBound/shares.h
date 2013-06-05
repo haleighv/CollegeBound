@@ -13,6 +13,6 @@
 #ifndef SHARES_H_
 #define SHARES_H_
 
-extern xQueueHandle xQueue;
+extern xQueueHandle xSnesDataQueue;
 
 #endif /* SHARES_H_ */
