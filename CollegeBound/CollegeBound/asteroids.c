@@ -105,6 +105,7 @@ static xTaskHandle updateTaskHandle;
 static xSemaphoreHandle usartMutex;
 
 static object ship;
+static object wall;
 
 uint8_t fire_button = 0;
 
@@ -113,6 +114,7 @@ static object *bullets = NULL;
 static object *asteroids = NULL;
 
 static xGroupHandle astGroup;
+static xGroupHandle wallGroup;
 static xSpriteHandle background;
 
 void init(void);
@@ -501,12 +503,14 @@ void init(void) {
 	bullets = NULL;
 	asteroids = NULL;
 	astGroup = ERROR_HANDLE;
+	wallGroup = ERROR_HANDLE;
 	
 	background = xSpriteCreate("stars.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
 	
 	astGroup = xGroupCreate();
+	wallGroup = xGroupCreate();
 	
 	for (i = 0; i < INITIAL_ASTEROIDS; i++) {
 		asteroids = createAsteroid(
@@ -536,6 +540,25 @@ void init(void) {
 	ship.accel = 0;
 	ship.angle = 0;
 	ship.a_vel = 0;
+	
+	wall.handle = xSpriteCreate(
+	"wall.bmp",
+	SCREEN_W >> 1,
+	0,
+	0,
+	SHIP_SIZE * 8,
+	SHIP_SIZE,
+	1);
+	
+	wall.pos.x = SCREEN_W >> 1;
+	wall.pos.y = 0;
+	wall.vel.x = 0;
+	wall.vel.y = 0;
+	wall.accel = 0;
+	wall.angle = 0;
+	wall.a_vel = 0;
+	
+	vGroupAddSprite(wallGroup, wall.handle);
 }
 
 /*------------------------------------------------------------------------------
@@ -570,6 +593,9 @@ void reset(void) {
 	}
 	vGroupDelete(astGroup);
 	
+   vSpriteDelete(wall.handle);
+   vGroupDelete(wallGroup);
+   
 	// removes bullets
 	while (bullets != NULL) {
    	vSpriteDelete(bullets->handle);
@@ -745,33 +771,34 @@ void spawnAsteroid(point *pos, uint8_t size) {
      * Use createAsteroid()
      */
    int vel, accel;
-   
-   //spawn 3 new asteroids
-	for(int i = 0; i < 3; i++) {
-      //set max velocity for the new size
-      switch (size - 1) {
-         case 2:
-         vel = AST_MAX_VEL_2;
-         accel = AST_MAX_AVEL_2;
-         break;
-         case 1:
-         vel = AST_MAX_VEL_1;
-         accel = AST_MAX_AVEL_1;
-         break;
-         default:
-         vel = AST_MAX_VEL_3;
-         accel = AST_MAX_AVEL_3;
-         break;
-      }
+   if (size > 1) {
+      //spawn 3 new asteroids
+	   for(int i = 0; i < 3; i++) {
+         //set max velocity for the new size
+         switch (size - 1) {
+            case 2:
+            vel = AST_MAX_VEL_2;
+            accel = AST_MAX_AVEL_2;
+            break;
+            case 1:
+            vel = AST_MAX_VEL_1;
+            accel = AST_MAX_AVEL_1;
+            break;
+            default:
+            vel = AST_MAX_VEL_3;
+            accel = AST_MAX_AVEL_3;
+            break;
+         }
       
-      asteroids = createAsteroid(
-         pos->x,                                         //x pos
-         pos->y,                                         //y pos
-         (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //x vel
-         (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //y vel
-         rand() % 360,                                   //angle
-         (rand() % (int8_t)(accel * 10)) / 5.0 - accel,  //accel
-         size - 1,                                       //size
-         asteroids);                                     //next asteroid
-   }
+         asteroids = createAsteroid(
+            pos->x,                                         //x pos
+            pos->y,                                         //y pos
+            (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //x vel
+            (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //y vel
+            rand() % 360,                                   //angle
+            (rand() % (int8_t)(accel * 10)) / 5.0 - accel,  //accel
+            size - 1,                                       //size
+            asteroids);                                     //next asteroid
+      }
+   }   
 }																																		
