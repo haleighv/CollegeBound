@@ -19,6 +19,8 @@
 * 5/8/12 MAC implemented spawn and create asteroid functions. 
 * 5/8/12 HAV implemented bullet functions and added queue.
 *******************************************************************************/
+
+#define F_CPU 16000000
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <stdlib.h>
@@ -58,7 +60,6 @@ typedef struct object_s {
 
 
 
-#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
 #define INITIAL_ASTEROIDS 1
@@ -104,7 +105,7 @@ static xTaskHandle updateTaskHandle;
 //Mutex used synchronize usart usage
 static xSemaphoreHandle usartMutex;
 
-static object ship;
+static object ship, oldShip;
 static object wall;
 
 uint8_t fire_button = 0;
@@ -170,11 +171,11 @@ void inputTask(void *vParam) {
 	
 	
 	uint16_t controller_data; 
-	snesInit(2);
+	snesInit(1);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData(2);
+		controller_data = snesData(1);
 		DDRF = 0xFF;
 		PORTF = ((controller_data>>4) & 0xFF);
 		
@@ -190,7 +191,7 @@ void inputTask(void *vParam) {
 		if(controller_data & SNES_B_BTN)
 			ship.accel = SHIP_ACCEL;
 		else
-			 ship.accel =0;
+			 ship.accel = 0;
 		
 		if(controller_data & SNES_Y_BTN)
 			 fire_button = 1;
@@ -259,6 +260,8 @@ void updateTask(void *vParam) {
 	float vel;
 	object *objIter, *objPrev;
 	for (;;) {
+      //saves parameters of the old ship for recovering
+      oldShip = ship;
       
 		// spin ship
 		ship.angle += ship.a_vel;
@@ -385,6 +388,8 @@ void drawTask(void *vParam) {
 	
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
+      if (!(uCollide(ship.handle, astGroup, &hit, 1) > 0))
+         ship = oldShip;
 		vSpriteSetRotation(ship.handle, (uint16_t)ship.angle);
 		vSpriteSetPosition(ship.handle, (uint16_t)ship.pos.x, (uint16_t)ship.pos.y);
 		objPrev = NULL;
@@ -544,14 +549,14 @@ void init(void) {
 	wall.handle = xSpriteCreate(
 	"wall.bmp",
 	SCREEN_W >> 1,
-	0,
+	SHIP_SIZE,
 	0,
 	SHIP_SIZE * 8,
 	SHIP_SIZE,
 	1);
 	
 	wall.pos.x = SCREEN_W >> 1;
-	wall.pos.y = 0;
+	wall.pos.y = SHIP_SIZE;
 	wall.vel.x = 0;
 	wall.vel.y = 0;
 	wall.accel = 0;
