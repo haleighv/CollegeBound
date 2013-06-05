@@ -58,7 +58,7 @@ typedef struct object_s {
 
 
 
-//#define F_CPU 16000000
+#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
 #define INITIAL_ASTEROIDS 1
@@ -170,11 +170,11 @@ void inputTask(void *vParam) {
 	
 	
 	uint16_t controller_data; 
-	snesInit();
+	snesInit(2);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData();
+		controller_data = snesData(2);
 		DDRF = 0xFF;
 		PORTF = ((controller_data>>4) & 0xFF);
 		

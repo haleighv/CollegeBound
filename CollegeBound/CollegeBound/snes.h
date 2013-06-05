@@ -19,10 +19,22 @@
 #include "queue.h"
 #include "shares.h"
 
-//uses B port
-#define SNES_DDR     DDRB
-#define SNES_PORT    PORTB
-#define SNES_PIN     PINB
+#define SNES_1P_MODE 1
+#define SNES_2P_MODE 2
+
+//uses PORTA for Player2
+#define SNES_DDR_P1     DDRA
+#define SNES_PORT_P1    PORTA
+#define SNES_PIN_P1     PINA
+#define SNES_P1 1
+
+//uses PORTB for Player2
+#define SNES_DDR_P2     DDRB
+#define SNES_PORT_P2    PORTB
+#define SNES_PIN_P2     PINB
+#define SNES_P2 2
+
+
 #define LATCH        0        //PB0
 #define CLK          1        //PB1
 #define DATA         2        //PB2
@@ -44,20 +56,20 @@
 #define SNES_Y_BTN		(1<<10)
 #define SNES_B_BTN		(1<<11)
 
-#define TIMERCOMP_5_US 8
-#define TIMERCOMP_12US 33
-#define TIMERCOMP_16_67MS 33339
+// #define TIMERCOMP_5_US 8
+// #define TIMERCOMP_12US 33
+// #define TIMERCOMP_16_67MS 33339
 
-#define TIMER_12US_MODE 0
-#define TIMER_16_67MS_MODE 1
-#define TIMER_DATA_CLK_STOP_MODE 2
+// #define TIMER_12US_MODE 0
+// #define TIMER_16_67MS_MODE 1
+// #define TIMER_DATA_CLK_STOP_MODE 2
 //----------------------------------Globals-----------------------------------//
-uint8_t timer_mode; 
-uint8_t num_bits_received;
-uint16_t temp_snes_data; 
-xQueueHandle xSnesDataQueue;
+// uint8_t timer_mode; 
+// uint8_t num_bits_received;
+// uint16_t temp_snes_data; 
+// xQueueHandle xSnesDataQueue;
 //----------------------------Function Prototypes----------------------------//
 
-void snesInit();
-uint16_t snesData();
+void snesInit(uint8_t);
+uint16_t snesData(uint8_t);
 #endif // _SNES_H_

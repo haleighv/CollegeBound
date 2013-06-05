@@ -31,6 +31,8 @@
 #include "snes.h"
 #include "CollegeBound.h"
 
+#define F_CPU 16000000
+
 #define DEG_TO_RAD M_PI / 180.0
 
 #define INITIAL_ASTEROIDS 0

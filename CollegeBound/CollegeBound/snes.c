@@ -15,18 +15,35 @@
  * with the SNES controller. See the #define section for which
  * pins are tied to which signal.
  **/
-void snesInit()
+void snesInit(uint8_t num_players)
 {
 	// Create Queue for snes controller data
-	xSnesDataQueue = xQueueCreate( 1, sizeof(uint16_t));
+	//xSnesDataQueue = xQueueCreate( 1, sizeof(uint16_t));
 	
+	// Configure Port for player1
+	if(num_players == 1)
+	{
+		//data = input; clock = output; latch = output
+		SNES_DDR_P1 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
+		SNES_PORT_P1 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+	}
 	
-	//data = input; clock = output; latch = output
-	SNES_DDR = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
-	SNES_PORT = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+	// Configure Port for player2 and player 1
+	else if(num_players == 2)
+	{
+		//data = input; clock = output; latch = output
+		SNES_DDR_P1 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
+		SNES_PORT_P1 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+		
+		//data = input; clock = output; latch = output
+		SNES_DDR_P2 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
+		SNES_PORT_P2 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+	}
 
-	timer_mode = TIMER_16_67MS_MODE;
-	num_bits_received = 0;
+
+
+	//timer_mode = TIMER_16_67MS_MODE;
+	//num_bits_received = 0;
 
 	//// Initialize OCR4A to clear every 16.67ms
 	//OCR4A = TIMER_16_67MS_MODE;
@@ -39,7 +56,7 @@ void snesInit()
 	//TIMSK4 |= (1<<OCIE4A);
 }
 
-uint16_t snesData()
+uint16_t snesData(uint8_t player_num)
 {
 	/**
 	* This is a table for which buttons correspond to the
@@ -62,24 +79,39 @@ uint16_t snesData()
 	
 	uint8_t i;
 	uint16_t data = 0;
+	volatile uint8_t* SNES_PORT;
+	volatile uint8_t* SNES_PIN;
+	
+	if(player_num == 1)
+	{
+		SNES_PORT = &SNES_PORT_P1;
+		SNES_PIN = &SNES_PORT_P1;
+	}
+	else if(player_num == 2)
+	{
+		SNES_PORT = &SNES_PORT_P2;
+		SNES_PIN = &SNES_PORT_P2;
+	}
+	else
+		return; 
 	
 	//latch signal (idle low) needs to be high for 12us
-	SNES_PORT |= (1<<LATCH);
+	*SNES_PORT |= (1<<LATCH);
 	_delay_us(LATCH_TIME);
-	SNES_PORT &= ~(1<<LATCH); //latch idle low
+	*SNES_PORT &= ~(1<<LATCH); //latch idle low
 	
 	//following the latch signal is 12 clock signals (idle high)
 	for (i=0; i<NUM_BTNS; i++)
 	{
 		_delay_us(CLK_TIME);
-		SNES_PORT &= ~(1<<CLK); //clock low
+		*SNES_PORT &= ~(1<<CLK); //clock low
 
 		//reads data from the controller and bitmask to the LSB
-		data |= (SNES_PIN & (1<<DATA))>>DATA;
+		data |= (*SNES_PIN & (1<<DATA))>>DATA;
 		data <<= 1; //shifts data to the right to allow for the next reading
 
 		_delay_us(CLK_TIME);
-		SNES_PORT |= (1<<CLK); //clock high, idles high when loop exits
+		*SNES_PORT |= (1<<CLK); //clock high, idles high when loop exits
 	}
 	
 	//the returned data is inverted for active high
@@ -87,88 +119,88 @@ uint16_t snesData()
 }
 
 
-ISR(TIMER4_COMPA_vect)
-{
-	if(timer_mode == TIMER_12US_MODE)
-	{
-		// if(num_bits_received != 0)
-			// num_errors++; 
+// ISR(TIMER4_COMPA_vect)
+// {
+	// if(timer_mode == TIMER_12US_MODE)
+	// {
+		// // if(num_bits_received != 0)
+			// // num_errors++; 
 		
-		SNES_PORT &= ~(1<<LATCH);     //latch idle low
-		
-		
+		// SNES_PORT &= ~(1<<LATCH);     //latch idle low
 		
 		
-		OCR4A = 261;
-		timer_mode = TIMER_DATA_CLK_STOP_MODE;
 		
 		
-		// Enable compB interrupt
-		OCR4B = TCNT4 + TIMERCOMP_5_US;
-		TIMSK4 |= (1<<OCIE4B);
-	}
-	else if(timer_mode == TIMER_16_67MS_MODE)
-	{
-		//latch signal (idle low) needs to be high for 12us
-		SNES_PORT |= (1<<LATCH);
-		OCR4A = TIMERCOMP_12US;
-		timer_mode = TIMER_12US_MODE;
-		TCNT4 = 0;
-	}
-	else if(timer_mode == TIMER_DATA_CLK_STOP_MODE)
-	{
-		// Disable compB interrupt
-		TIMSK4 &= ~(1<<OCIE4B);
-		OCR4B = 0;
-		temp_snes_data = ~(temp_snes_data>>1) & 0xFFF;
-		//xQueueSendToBack( xSnesDataQueue, &temp_snes_data, 0);
-		temp_snes_data = 0;
-		//num_bits_received = 0;
-		SNES_PORT = (1<<CLK); 
+		// OCR4A = 261;
+		// timer_mode = TIMER_DATA_CLK_STOP_MODE;
+		
+		
+		// // Enable compB interrupt
+		// OCR4B = TCNT4 + TIMERCOMP_5_US;
+		// TIMSK4 |= (1<<OCIE4B);
+	// }
+	// else if(timer_mode == TIMER_16_67MS_MODE)
+	// {
+		// //latch signal (idle low) needs to be high for 12us
+		// SNES_PORT |= (1<<LATCH);
+		// OCR4A = TIMERCOMP_12US;
+		// timer_mode = TIMER_12US_MODE;
+		// TCNT4 = 0;
+	// }
+	// else if(timer_mode == TIMER_DATA_CLK_STOP_MODE)
+	// {
+		// // Disable compB interrupt
+		// TIMSK4 &= ~(1<<OCIE4B);
+		// OCR4B = 0;
+		// temp_snes_data = ~(temp_snes_data>>1) & 0xFFF;
+		// //xQueueSendToBack( xSnesDataQueue, &temp_snes_data, 0);
+		// temp_snes_data = 0;
+		// //num_bits_received = 0;
+		// SNES_PORT = (1<<CLK); 
 				
-		OCR4A = TIMERCOMP_16_67MS;
-		timer_mode = TIMER_16_67MS_MODE;		
-	}		
-	else
-		timer_mode = TIMER_16_67MS_MODE;
-}
+		// OCR4A = TIMERCOMP_16_67MS;
+		// timer_mode = TIMER_16_67MS_MODE;		
+	// }		
+	// else
+		// timer_mode = TIMER_16_67MS_MODE;
+// }
 
-ISR(TIMER4_COMPB_vect)
-{
-	//static temp_snes_data = 0;
-	
-	OCR4B = TCNT4 + TIMERCOMP_5_US;
-	SNES_PORT ^= (1<<CLK);     // Toggle clock, idles high
-	
-	//reads data from the controller and bitmask to the LSB
-	temp_snes_data |= (SNES_PIN & (1<<DATA))>>DATA;
-	temp_snes_data <<= 1;    //shifts data to the left to allow for the next reading
-	//++num_bits_received;
-	
-
-	
-	//if(num_bits_received == (24))
-	//{
-		//// Disable compB interrupt
-		//TIMSK4 &= ~(1<<OCIE4B);
-		//OCR4B = 0;
-		//temp_snes_data = ~(temp_snes_data>>1) & 0xFFF;
-		//xQueueSendToBack( xSnesDataQueue, &temp_snes_data, 0);
-		////temp_snes_data = 0;
-		////num_bits_received = 0;
-	//}
-	
-	// Set to re-enter in 5US
-	
-	
+// ISR(TIMER4_COMPB_vect)
+// {
+	// //static temp_snes_data = 0;
 	
 	// OCR4B = TCNT4 + TIMERCOMP_5_US;
 	// SNES_PORT ^= (1<<CLK);     // Toggle clock, idles high
-	// portBASE_TYPE xStatus;
-	// xStatus = xQueueSendToBack( xSnesDataQueue, SNES_PIN, 0);
-	// if( xStatus != pdPASS )
-	// {
-		// TIMSK4 &= ~(1<<OCIE4B);
-		// OCR4B = 0;
-	// }
-}
+	
+	// //reads data from the controller and bitmask to the LSB
+	// temp_snes_data |= (SNES_PIN & (1<<DATA))>>DATA;
+	// temp_snes_data <<= 1;    //shifts data to the left to allow for the next reading
+	// //++num_bits_received;
+	
+
+	
+	// //if(num_bits_received == (24))
+	// //{
+		// //// Disable compB interrupt
+		// //TIMSK4 &= ~(1<<OCIE4B);
+		// //OCR4B = 0;
+		// //temp_snes_data = ~(temp_snes_data>>1) & 0xFFF;
+		// //xQueueSendToBack( xSnesDataQueue, &temp_snes_data, 0);
+		// ////temp_snes_data = 0;
+		// ////num_bits_received = 0;
+	// //}
+	
+	// // Set to re-enter in 5US
+	
+	
+	
+	// // OCR4B = TCNT4 + TIMERCOMP_5_US;
+	// // SNES_PORT ^= (1<<CLK);     // Toggle clock, idles high
+	// // portBASE_TYPE xStatus;
+	// // xStatus = xQueueSendToBack( xSnesDataQueue, SNES_PIN, 0);
+	// // if( xStatus != pdPASS )
+	// // {
+		// // TIMSK4 &= ~(1<<OCIE4B);
+		// // OCR4B = 0;
+	// // }
+// }

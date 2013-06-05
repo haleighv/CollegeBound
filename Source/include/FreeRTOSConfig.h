@@ -106,7 +106,7 @@
 
 
 //	#define portHD44780_LCD					// define the use of the Freetronics HD44780 LCD (or other). Check include for (flexible) pin assignments.
-	#define portSD_CARD						// define the use of the SD Card for Arduino Mega2560 and Freetronics EtherMega
+//	#define portSD_CARD						// define the use of the SD Card for Arduino Mega2560 and Freetronics EtherMega
 //	#define portRTC_DEFINED					// RTC DS1307 implemented, therefore define.
 	#define	portSERIAL_BUFFER		255		// Define the size of the serial buffer.
 
