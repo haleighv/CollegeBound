@@ -13,6 +13,7 @@
 #ifndef SHARES_H_
 #define SHARES_H_
 
-extern xQueueHandle xSnesDataQueue;
+//extern xSemaphoreHandle xSnesMutex;
+
 
 #endif /* SHARES_H_ */

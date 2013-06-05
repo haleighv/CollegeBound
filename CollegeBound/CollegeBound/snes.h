@@ -8,7 +8,7 @@
  * the button status and transmits a button sequence off of a clock cycle. This
  * code replicates the interface that the SNES console uses with the controllers.
  **/
- #ifndef _SNES_H_
+#ifndef _SNES_H_
 #define _SNES_H_
 
 #include <avr/io.h>

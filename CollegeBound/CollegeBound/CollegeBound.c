@@ -107,6 +107,7 @@ static xTaskHandle updateTaskHandle;
 //Mutex used synchronize usart usage
 static xSemaphoreHandle usartMutex;
 
+static xSemaphoreHandle xSnesMutex;
 static object ship;
 
 uint8_t fire_button = 0;
@@ -169,38 +170,39 @@ void inputTask(void *vParam) {
 	// Initialize the xLastWakeTime variable with the current time.
 	xLastWakeTime = xTaskGetTickCount();
 	
-	uint8_t player_num = *(uint8_t*)&vParam;
-
-	uint16_t controller_data; 
-	snesInit(player_num);
+	snesInit(SNES_2P_MODE); 
+	//snesInit(player_num);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData(player_num);
+      //xSemaphoreTake(xSnesMutex, portMAX_DELAY);
+		//controller_data = snesData(player_num);
 		
-		
+		 
       DDRF = 0xFF;
-      if(player_num == 1)
-         PORTF = ((controller_data>>4) & 0xF0);
-      else if(player_num == 2)
-         PORTF = ((controller_data>>8) & 0x0F);
-      //PORTF = ((controller_data>>4) & 0xFF);
-		
-      if(controller_data & SNES_LEFT_BTN)
+
+      uint16_t controller_data1, controller_data2;
+
+      controller_data1 = snesData(SNES_P1);
+      controller_data2 = snesData(SNES_P2);
+      PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
+
+      if(controller_data1 & SNES_LEFT_BTN)
          ship.a_vel = +SHIP_AVEL;
-      else if(controller_data & SNES_RIGHT_BTN)
+      else if(controller_data1 & SNES_RIGHT_BTN)
          ship.a_vel = -SHIP_AVEL;
       else
          ship.a_vel = 0;
-       
-      if(controller_data & SNES_B_BTN)
+   
+      if(controller_data1 & SNES_B_BTN)
          ship.accel = SHIP_ACCEL;
       else
          ship.accel =0;
-       
-      if(controller_data & SNES_Y_BTN)
+   
+      if(controller_data1 & SNES_Y_BTN)
          fire_button = 1;
-       
+
+      //xSemaphoreGive(xSnesMutex);
       vTaskDelayUntil( &xLastWakeTime, 17/portTICK_RATE_MS);
    }
 }
@@ -477,29 +479,30 @@ int main(void) {
 
 
    //----test code begin----//
-	//snesInit(SNES_1P_MODE);
-   //uint16_t controller_data;      	
+	//snesInit(SNES_2P_MODE);
+   //uint16_t controller_data1, controller_data2;      	
    //DDRF = 0xFF;
 	//while(1)
 	//{
-		//controller_data = snesData(SNES_P1);
+		//controller_data1 = snesData(SNES_P1);
+      //controller_data2 = snesData(SNES_P2);
+      //PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
 		//_delay_ms(16);
-      //PORTF = ((controller_data>>4) & 0xFF);
+      //
 	//}
    //----test code end----//
 
-
+   xSnesMutex = xSemaphoreCreateMutex();
 	usartMutex = xSemaphoreCreateMutex();
 	
-	vWindowCreate(SCREEN_W, SCREEN_H);
    
-   uint8_t player;	
+	vWindowCreate(SCREEN_W, SCREEN_H);
+   	
 
 	sei();
-   player = SNES_P1;
-	xTaskCreate(inputTask, (signed char *) "p1", 80, (void*)&player, 6, &inputTaskHandle);
-   player = SNES_P2;
-	xTaskCreate(inputTask, (signed char *) "p2", 80, (void*)&player, 6, &inputTaskHandle);
+
+	xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+	//xTaskCreate(inputTask, (signed char *) "p2", 80, (void*)&player2, 6, &inputTaskHandle);
 	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
 	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
 	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
@@ -768,32 +771,34 @@ void spawnAsteroid(point *pos, uint8_t size) {
      */
    int vel, accel;
    
-   //spawn 3 new asteroids
-	for(int i = 0; i < 3; i++) {
-      //set max velocity for the new size
-      switch (size - 1) {
-         case 2:
-         vel = AST_MAX_VEL_2;
-         accel = AST_MAX_AVEL_2;
-         break;
-         case 1:
-         vel = AST_MAX_VEL_1;
-         accel = AST_MAX_AVEL_1;
-         break;
-         default:
-         vel = AST_MAX_VEL_3;
-         accel = AST_MAX_AVEL_3;
-         break;
-      }
+   if (size > 1) {
+      //spawn 3 new asteroids
+	   for(int i = 0; i < 3; i++) {
+         //set max velocity for the new size
+         switch (size - 1) {
+            case 2:
+            vel = AST_MAX_VEL_2;
+            accel = AST_MAX_AVEL_2;
+            break;
+            case 1:
+            vel = AST_MAX_VEL_1;
+            accel = AST_MAX_AVEL_1;
+            break;
+            default:
+            vel = AST_MAX_VEL_3;
+            accel = AST_MAX_AVEL_3;
+            break;
+         }
       
-      asteroids = createAsteroid(
-         pos->x,                                         //x pos
-         pos->y,                                         //y pos
-         (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //x vel
-         (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //y vel
-         rand() % 360,                                   //angle
-         (rand() % (int8_t)(accel * 10)) / 5.0 - accel,  //accel
-         size - 1,                                       //size
-         asteroids);                                     //next asteroid
+         asteroids = createAsteroid(
+            pos->x,                                         //x pos
+            pos->y,                                         //y pos
+            (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //x vel
+            (rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //y vel
+            rand() % 360,                                   //angle
+            (rand() % (int8_t)(accel * 10)) / 5.0 - accel,  //accel
+            size - 1,                                       //size
+            asteroids);                                     //next asteroid
+      }
    }
 }																																		
