@@ -169,19 +169,22 @@ void inputTask(void *vParam) {
 	// Initialize the xLastWakeTime variable with the current time.
 	xLastWakeTime = xTaskGetTickCount();
 	
-	
+	uint8_t player_num = *(uint8_t*)&vParam;
+
 	uint16_t controller_data; 
-	snesInit(SNES_1P_MODE);
+	snesInit(player_num);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData(SNES_P1);
+		controller_data = snesData(player_num);
 		
 		
       DDRF = 0xFF;
-      PORTF = ((controller_data>>4) & 0xFF);
-		   
-		
+      if(player_num == 1)
+         PORTF = ((controller_data>>4) & 0xF0);
+      else if(player_num == 2)
+         PORTF = ((controller_data>>8) & 0x0F);
+      //PORTF = ((controller_data>>4) & 0xFF);
 		
       if(controller_data & SNES_LEFT_BTN)
          ship.a_vel = +SHIP_AVEL;
@@ -474,25 +477,29 @@ int main(void) {
 
 
    //----test code begin----//
-	snesInit(SNES_1P_MODE);
-   uint16_t controller_data;      	
-   DDRF = 0xFF;
-	while(1)
-	{
-		controller_data = snesData(SNES_P1);
-		_delay_ms(16);
-      PORTF = ((controller_data>>4) & 0xFF);
-	}
+	//snesInit(SNES_1P_MODE);
+   //uint16_t controller_data;      	
+   //DDRF = 0xFF;
+	//while(1)
+	//{
+		//controller_data = snesData(SNES_P1);
+		//_delay_ms(16);
+      //PORTF = ((controller_data>>4) & 0xFF);
+	//}
    //----test code end----//
 
 
 	usartMutex = xSemaphoreCreateMutex();
 	
 	vWindowCreate(SCREEN_W, SCREEN_H);
-	
+   
+   uint8_t player;	
+
 	sei();
-	//xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
-	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
+   player = SNES_P1;
+	xTaskCreate(inputTask, (signed char *) "p1", 80, (void*)&player, 6, &inputTaskHandle);
+   player = SNES_P2;
+	xTaskCreate(inputTask, (signed char *) "p2", 80, (void*)&player, 6, &inputTaskHandle);
 	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
 	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
 	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
