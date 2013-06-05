@@ -1,5 +1,5 @@
 /*******************************************************************************
-* File: CollegeBound.c
+* File: asteroids.c
 *
 * Description: This FreeRTOS program uses the AVR graphics module to display
 *  and track the game state of the classic arcade game "Asteroids." When
@@ -28,15 +28,37 @@
 #include "semphr.h"
 #include "graphics.h"
 #include "usart.h"
-#include "CollegeBound.h"
+#include "snes.h"
 
-#define F_CPU 16000000
 
+
+//represents a point on the screen
+typedef struct {
+	float x;
+	float y;
+} point;
+
+//object is used to represent the ship, bullets, and asteroids 
+typedef struct object_s {
+	xSpriteHandle handle;
+	point pos;
+	point vel;
+	float accel;
+	int16_t angle;
+	int8_t a_vel;
+	uint8_t size;
+	uint16_t life;
+	struct object_s *next;
+} object;
+
+
+
+//#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
-#define INITIAL_ASTEROIDS 0
-#define SCREEN_W 720
-#define SCREEN_H 720
+#define INITIAL_ASTEROIDS 1
+#define SCREEN_W 800
+#define SCREEN_H 600
 
 #define DEAD_ZONE_OVER_2 120
 
@@ -44,8 +66,8 @@
 #define BULLET_DELAY_MS 500
 #define BULLET_LIFE_MS  1000
 
-#define SHIP_SIZE 70
-#define BULLET_SIZE 10
+#define SHIP_SIZE 50
+#define BULLET_SIZE 26
 #define AST_SIZE_3 100
 #define AST_SIZE_2 40
 #define AST_SIZE_1 15
@@ -79,6 +101,8 @@ static xSemaphoreHandle usartMutex;
 
 static object ship;
 
+uint8_t fire_button = 0;
+
 //linked lists for asteroids and bullets
 static object *bullets = NULL;
 static object *asteroids = NULL;
@@ -94,6 +118,27 @@ uint16_t sizeToPix(int8_t size);
 object *createBullet(float x, float y, float velx, float vely, object *nxt);
 void spawnAsteroid(point *pos, uint8_t size);
 
+
+//void controllerTask(void *vParam) {
+	//// variable to hold ticks value of last task run
+	//portTickType xLastWakeTime;
+	//
+	//// Initialize the xLastWakeTime variable with the current time.
+	//xLastWakeTime = xTaskGetTickCount();
+	//snesInit()
+	//
+	//for(;;)
+	//{
+		//uint16_t controller_data;
+		//snesInit();
+		//
+		//while (1) {
+			////xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
+			//controller_data = snesData();
+		//vTaskDelay(250/portTICK_RATE_MS);
+	//}
+//}	
+//
 /*------------------------------------------------------------------------------
  * Function: inputTask
  *
@@ -108,18 +153,42 @@ void inputTask(void *vParam) {
      * ship.accel stores if the ship is moving
      * ship.a_vel stores which direction the ship is moving in
      */
+	vTaskDelay(5000/portTICK_RATE_MS);
+	
+	// variable to hold ticks value of last task run
+	portTickType xLastWakeTime;
+	
+	// Initialize the xLastWakeTime variable with the current time.
+	xLastWakeTime = xTaskGetTickCount();
+	
+	
+	uint16_t controller_data; 
+	snesInit(SNES_1P_MODE);
+	
     while (1) {
-		if(LEFT_BUTTON)
+		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
+		controller_data = snesData(SNES_P2);
+		DDRF = 0xFF;
+		PORTF = ((controller_data>>4) & 0xFF);
+		
+		
+		
+		if(controller_data & SNES_LEFT_BTN)
 			ship.a_vel = +SHIP_AVEL;
-		else if(RIGHT_BUTTON)
+		else if(controller_data & SNES_RIGHT_BTN)
 			ship.a_vel = -SHIP_AVEL;
 		else
 			ship.a_vel = 0;
 			
-		if(ACCEL_BUTTON)
+		if(controller_data & SNES_B_BTN)
 			ship.accel = SHIP_ACCEL;
 		else
 			 ship.accel =0;
+		
+		if(controller_data & SNES_Y_BTN)
+			 fire_button = 1;
+			
+		vTaskDelay(17/portTICK_RATE_MS);
 	}
 }
 
@@ -148,7 +217,8 @@ void bulletTask(void *vParam) {
 	xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
-	    if(SHOOT_BUTTON) {
+	    if(fire_button) {
+			fire_button = 0;
 		    xSemaphoreTake(usartMutex, portMAX_DELAY);
 			 
           //Make a new bullet and add to linked list
@@ -391,14 +461,18 @@ void drawTask(void *vParam) {
 int main(void) {
 	DDRB = 0x00;
 	TCCR2A = _BV(CS00); 
-	
+	//snesInit();
+	//while(1)
+	//{
+		//snesData();
+		//_delay_ms(16);
+	//}
 	usartMutex = xSemaphoreCreateMutex();
 	
 	vWindowCreate(SCREEN_W, SCREEN_H);
 	
 	sei();
-	
-	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 1, &inputTaskHandle);
+	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
 	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
 	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
 	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
@@ -423,7 +497,7 @@ void init(void) {
 	asteroids = NULL;
 	astGroup = ERROR_HANDLE;
 	
-	background = xSpriteCreate("floor0.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+	background = xSpriteCreate("stars.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
 	
@@ -450,8 +524,8 @@ void init(void) {
       SHIP_SIZE, 
       1);
    
-	ship.pos.x = 30;
-	ship.pos.y = 90;
+	ship.pos.x = SCREEN_W >> 1;
+	ship.pos.y = SCREEN_H >> 1;
 	ship.vel.x = 0;
 	ship.vel.y = 0;
 	ship.accel = 0;
