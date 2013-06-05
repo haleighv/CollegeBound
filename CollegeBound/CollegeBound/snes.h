@@ -19,16 +19,20 @@
 #include "queue.h"
 #include "shares.h"
 
+#define SNES_1P_MODE 1
+#define SNES_2P_MODE 2
+
 //uses PORTA for Player2
 #define SNES_DDR_P1     DDRA
 #define SNES_PORT_P1    PORTA
 #define SNES_PIN_P1     PINA
+#define SNES_P1 1
 
 //uses PORTB for Player2
 #define SNES_DDR_P2     DDRB
 #define SNES_PORT_P2    PORTB
 #define SNES_PIN_P2     PINB
-
+#define SNES_P2 2
 
 
 #define LATCH        0        //PB0
