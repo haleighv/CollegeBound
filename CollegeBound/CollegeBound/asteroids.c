@@ -86,7 +86,7 @@ typedef struct object_s {
 
 #define BACKGROUND_AVEL 0.01
 
-#define AST_MAX_VEL_3 2.0
+#define AST_MAX_VEL_3 0
 #define AST_MAX_VEL_2 3.0
 #define AST_MAX_VEL_1 4.0
 #define AST_MAX_AVEL_3 3.0
@@ -105,14 +105,14 @@ static xTaskHandle updateTaskHandle;
 //Mutex used synchronize usart usage
 static xSemaphoreHandle usartMutex;
 
-static object ship, oldShip;
-static object wall;
+static object ship;
 
 uint8_t fire_button = 0;
 
 //linked lists for asteroids and bullets
 static object *bullets = NULL;
 static object *asteroids = NULL;
+static object *walls = NULL;
 
 static xGroupHandle astGroup;
 static xGroupHandle wallGroup;
@@ -122,6 +122,7 @@ void init(void);
 void reset(void);
 int16_t getRandStartPosVal(int16_t dimOver2);
 object *createAsteroid(float x, float y, float velx, float vely, int16_t angle, int8_t avel, int8_t size, object *nxt);
+object *createWall(char * image, float x, float y, int16_t angle, object *nxt);
 uint16_t sizeToPix(int8_t size);
 object *createBullet(float x, float y, float velx, float vely, object *nxt);
 void spawnAsteroid(point *pos, uint8_t size);
@@ -260,9 +261,6 @@ void updateTask(void *vParam) {
 	float vel;
 	object *objIter, *objPrev;
 	for (;;) {
-      //saves parameters of the old ship for recovering
-      oldShip = ship;
-      
 		// spin ship
 		ship.angle += ship.a_vel;
 		if (ship.angle >= 360)
@@ -388,8 +386,14 @@ void drawTask(void *vParam) {
 	
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
-      if (!(uCollide(ship.handle, astGroup, &hit, 1) > 0))
-         ship = oldShip;
+		if (uCollide(ship.handle, wallGroup, &hit, 1) > 0) {
+   		ship.pos.x -= ship.vel.x*10;
+   		ship.pos.y -= ship.vel.y*10;
+         ship.vel.x = 0;
+         ship.vel.y = 0;
+   		ship.accel = 0;
+   		ship.a_vel = 0;
+      }
 		vSpriteSetRotation(ship.handle, (uint16_t)ship.angle);
 		vSpriteSetPosition(ship.handle, (uint16_t)ship.pos.x, (uint16_t)ship.pos.y);
 		objPrev = NULL;
@@ -546,24 +550,19 @@ void init(void) {
 	ship.angle = 0;
 	ship.a_vel = 0;
 	
-	wall.handle = xSpriteCreate(
-	"wall.bmp",
-	SCREEN_W >> 1,
-	SHIP_SIZE,
-	0,
-	SHIP_SIZE * 8,
-	SHIP_SIZE,
-	1);
-	
-	wall.pos.x = SCREEN_W >> 1;
-	wall.pos.y = SHIP_SIZE;
-	wall.vel.x = 0;
-	wall.vel.y = 0;
-	wall.accel = 0;
-	wall.angle = 0;
-	wall.a_vel = 0;
-	
-	vGroupAddSprite(wallGroup, wall.handle);
+	walls = createWall(
+	   "wall.bmp",
+	   SCREEN_W >> 1,
+	   SHIP_SIZE / 2,
+	   0,
+	   walls);
+   
+	walls = createWall(
+      "wall.bmp",
+      SCREEN_W >> 1, 
+      SCREEN_H - SHIP_SIZE / 2, 
+      0, 
+      walls);
 }
 
 /*------------------------------------------------------------------------------
@@ -598,8 +597,13 @@ void reset(void) {
 	}
 	vGroupDelete(astGroup);
 	
-   vSpriteDelete(wall.handle);
-   vGroupDelete(wallGroup);
+	while (walls != NULL) {
+   	vSpriteDelete(walls->handle);
+   	nextObject = walls->next;
+   	vPortFree(walls);
+   	walls = nextObject;
+	}
+	vGroupDelete(walls);
    
 	// removes bullets
 	while (bullets != NULL) {
@@ -614,6 +618,34 @@ void reset(void) {
    
    //removes the background
    vSpriteDelete(background);
+}
+
+object *createWall(char *image, float x, float y, int16_t angle, object *nxt) {
+   //allocate space for a new asteroid
+   object *newWall = pvPortMalloc(sizeof(object));
+   
+   //setup asteroid sprite
+   newWall->handle = xSpriteCreate(
+   image,                  //reference to png filename
+   x,                      //xPos
+   y,                      //yPos
+   angle,                  //rAngle
+   SHIP_SIZE * 8,          //width
+   SHIP_SIZE,              //height
+   1);                     //depth
+   
+   //set position
+   newWall->pos.x = x;
+   newWall->pos.y = y;
+   //set angle
+   newWall->angle = angle;
+   //link to asteroids list
+   newWall->next = walls;
+   //add to asteroids sprite group
+   vGroupAddSprite(wallGroup, newWall->handle);
+   
+   //return pointer to new asteroid
+   return newWall;
 }
 
 /*------------------------------------------------------------------------------
