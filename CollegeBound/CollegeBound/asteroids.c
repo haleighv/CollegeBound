@@ -19,6 +19,8 @@
 * 5/8/12 MAC implemented spawn and create asteroid functions. 
 * 5/8/12 HAV implemented bullet functions and added queue.
 *******************************************************************************/
+
+#define F_CPU 16000000
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <stdlib.h>
@@ -58,18 +60,22 @@ typedef struct object_s {
 
 
 
-#define F_CPU 16000000
 #define DEG_TO_RAD M_PI / 180.0
 
 #define INITIAL_ASTEROIDS 1
-#define SCREEN_W 800
-#define SCREEN_H 600
+#define SCREEN_W 960
+#define SCREEN_H 640
 
 #define DEAD_ZONE_OVER_2 120
 
 #define FRAME_DELAY_MS  10
 #define BULLET_DELAY_MS 500
 #define BULLET_LIFE_MS  1000
+
+#define WALL_SIZE 50
+#define WALL_WIDTH 20
+#define WALL_HEIGHT 13
+#define WALL_BLOCK 2
 
 #define SHIP_SIZE 50
 #define BULLET_SIZE 26
@@ -85,7 +91,7 @@ typedef struct object_s {
 
 #define BACKGROUND_AVEL 0.01
 
-#define AST_MAX_VEL_3 2.0
+#define AST_MAX_VEL_3 0
 #define AST_MAX_VEL_2 3.0
 #define AST_MAX_VEL_1 4.0
 #define AST_MAX_AVEL_3 3.0
@@ -105,13 +111,13 @@ static xTaskHandle updateTaskHandle;
 static xSemaphoreHandle usartMutex;
 
 static object ship;
-static object wall;
 
 uint8_t fire_button = 0;
 
 //linked lists for asteroids and bullets
 static object *bullets = NULL;
 static object *asteroids = NULL;
+static object *walls = NULL;
 
 static xGroupHandle astGroup;
 static xGroupHandle wallGroup;
@@ -121,6 +127,7 @@ void init(void);
 void reset(void);
 int16_t getRandStartPosVal(int16_t dimOver2);
 object *createAsteroid(float x, float y, float velx, float vely, int16_t angle, int8_t avel, int8_t size, object *nxt);
+object *createWall(char * image, float x, float y, int16_t angle, object *nxt, uint8_t height, uint8_t width);
 uint16_t sizeToPix(int8_t size);
 object *createBullet(float x, float y, float velx, float vely, object *nxt);
 void spawnAsteroid(point *pos, uint8_t size);
@@ -170,11 +177,11 @@ void inputTask(void *vParam) {
 	
 	
 	uint16_t controller_data; 
-	snesInit(2);
+	snesInit(1);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData(2);
+		controller_data = snesData(1);
 		DDRF = 0xFF;
 		PORTF = ((controller_data>>4) & 0xFF);
 		
@@ -190,7 +197,7 @@ void inputTask(void *vParam) {
 		if(controller_data & SNES_B_BTN)
 			ship.accel = SHIP_ACCEL;
 		else
-			 ship.accel =0;
+			 ship.accel = 0;
 		
 		if(controller_data & SNES_Y_BTN)
 			 fire_button = 1;
@@ -259,7 +266,6 @@ void updateTask(void *vParam) {
 	float vel;
 	object *objIter, *objPrev;
 	for (;;) {
-      
 		// spin ship
 		ship.angle += ship.a_vel;
 		if (ship.angle >= 360)
@@ -385,6 +391,33 @@ void drawTask(void *vParam) {
 	
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
+		if (uCollide(ship.handle, wallGroup, &hit, 1) > 0) {
+   		objPrev = NULL;
+   		objIter = walls;
+   		while (objIter != NULL) {
+            if (objIter->handle == hit) {
+      		   pos = objIter->pos;
+               break;
+            } else {
+               objPrev = objIter;
+               objIter = objIter->next;
+            }
+         }
+   		//if (ship.pos.x > pos.x)
+   		   //ship.pos.x = pos.x + WALL_SIZE;
+   		//else
+   		   //ship.pos.x = pos.x - WALL_SIZE;
+   		if (ship.pos.y > pos.y)
+            ship.pos.y = pos.y + WALL_SIZE;
+         else
+            ship.pos.y = pos.y - WALL_SIZE;
+            
+         //ship.pos.x -= ship.vel.x*10;
+         ship.vel.x = 0;
+         ship.vel.y = 0;
+   		ship.accel = 0;
+   		ship.a_vel = 0;
+      }
 		vSpriteSetRotation(ship.handle, (uint16_t)ship.angle);
 		vSpriteSetPosition(ship.handle, (uint16_t)ship.pos.x, (uint16_t)ship.pos.y);
 		objPrev = NULL;
@@ -505,7 +538,7 @@ void init(void) {
 	astGroup = ERROR_HANDLE;
 	wallGroup = ERROR_HANDLE;
 	
-	background = xSpriteCreate("stars.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+	background = xSpriteCreate("map.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
 	
@@ -541,24 +574,86 @@ void init(void) {
 	ship.angle = 0;
 	ship.a_vel = 0;
 	
-	wall.handle = xSpriteCreate(
-	"wall.bmp",
-	SCREEN_W >> 1,
-	0,
-	0,
-	SHIP_SIZE * 8,
-	SHIP_SIZE,
-	1);
-	
-	wall.pos.x = SCREEN_W >> 1;
-	wall.pos.y = 0;
-	wall.vel.x = 0;
-	wall.vel.y = 0;
-	wall.accel = 0;
-	wall.angle = 0;
-	wall.a_vel = 0;
-	
-	vGroupAddSprite(wallGroup, wall.handle);
+	walls = createWall(
+	   "width_wall.bmp",
+	   SCREEN_W >> 1,
+	   0,
+	   0,
+	   walls,
+      1,
+      WALL_WIDTH);
+   
+   walls = createWall(
+      "width_wall.bmp",
+      SCREEN_W >> 1,
+      SCREEN_H,
+      0,
+      walls,
+      1,
+      WALL_WIDTH);
+   
+	walls = createWall(
+      "side_wall.bmp",
+      0, 
+      SCREEN_H >> 1, 
+      90, 
+      walls,
+      1,
+      WALL_HEIGHT);
+      
+   walls = createWall(
+      "side_wall.bmp",
+      SCREEN_W,
+      SCREEN_H >> 1,
+      90,
+      walls,
+      1,
+      WALL_HEIGHT);
+      
+   walls = createWall(
+      "wall.bmp",
+      SCREEN_W >> 1,
+      SCREEN_H >> 1,
+      90,
+      walls,
+      1,
+      8);
+      
+   walls = createWall(
+      "small_wall.bmp",
+      SCREEN_W - 2.5 * WALL_SIZE,
+      SCREEN_H >> 2,
+      0,
+      walls,
+      1,
+      4);
+      
+   walls = createWall(
+      "small_wall.bmp",
+      2.5 * WALL_SIZE,
+      SCREEN_H - (SCREEN_H >> 2),
+      0,
+      walls,
+      1,
+      4);
+      
+   walls = createWall(
+      "block_wall.bmp",
+      SCREEN_W - 4.5 * WALL_SIZE,
+      SCREEN_H - 1.5 * WALL_SIZE,
+      0,
+      walls,
+      WALL_BLOCK,
+      WALL_BLOCK);
+      
+   walls = createWall(
+      "block_wall.bmp",
+      4.5 * WALL_SIZE,
+      1.5 * WALL_SIZE,
+      0,
+      walls,
+      WALL_BLOCK,
+      WALL_BLOCK);
 }
 
 /*------------------------------------------------------------------------------
@@ -593,8 +688,13 @@ void reset(void) {
 	}
 	vGroupDelete(astGroup);
 	
-   vSpriteDelete(wall.handle);
-   vGroupDelete(wallGroup);
+	while (walls != NULL) {
+   	vSpriteDelete(walls->handle);
+   	nextObject = walls->next;
+   	vPortFree(walls);
+   	walls = nextObject;
+	}
+	vGroupDelete(walls);
    
 	// removes bullets
 	while (bullets != NULL) {
@@ -609,6 +709,34 @@ void reset(void) {
    
    //removes the background
    vSpriteDelete(background);
+}
+
+object *createWall(char *image, float x, float y, int16_t angle, object *nxt, uint8_t height, uint8_t width) {
+   //allocate space for a new wall
+   object *newWall = pvPortMalloc(sizeof(object));
+   
+   //setup wall sprite
+   newWall->handle = xSpriteCreate(
+   image,                  //reference to png filename
+   x,                      //xPos
+   y,                      //yPos
+   angle,                  //rAngle
+   WALL_SIZE * width,      //width
+   WALL_SIZE * height,     //height
+   1);                     //depth
+   
+   //set position
+   newWall->pos.x = x;
+   newWall->pos.y = y;
+   //set angle
+   newWall->angle = angle;
+   //link to asteroids list
+   newWall->next = walls;
+   //add to asteroids sprite group
+   vGroupAddSprite(wallGroup, newWall->handle);
+   
+   //return pointer to new asteroid
+   return newWall;
 }
 
 /*------------------------------------------------------------------------------

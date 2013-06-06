@@ -30,13 +30,13 @@
 #define SNES_DDR_P1     DDRA
 #define SNES_PORT_P1    PORTA
 #define SNES_PIN_P1     PINA
-#define SNES_P1 1
+#define SNES_P1         1
 
 //uses PORTB for Player2
 #define SNES_DDR_P2     DDRB
 #define SNES_PORT_P2    PORTB
 #define SNES_PIN_P2     PINB
-#define SNES_P2 2
+#define SNES_P2         2
 
 
 #define LATCH        0        //PB0
@@ -56,7 +56,7 @@
 #define SNES_DOWN_BTN	(1<<6)
 #define SNES_UP_BTN		(1<<7)
 #define SNES_STRT_BTN	(1<<8)
-#define SNES_SEL_BTN	(1<<9)
+#define SNES_SEL_BTN	   (1<<9)
 #define SNES_Y_BTN		(1<<10)
 #define SNES_B_BTN		(1<<11)
 
