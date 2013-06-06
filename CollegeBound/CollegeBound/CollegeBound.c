@@ -32,12 +32,12 @@
 #include "usart.h"
 #include "snes.h"
 
-//Asteroid images
-const char *astImages[] = {
-	"a1.png",
-	"a2.png",
-	"a3.png"
-};
+const char* tank_images[] = {
+   "tank0.png",
+   "tank1.png",
+   "tank2.png",
+   "tank3.png"};
+
 
 //represents a point on the screen
 typedef struct {
@@ -69,7 +69,6 @@ typedef struct wall {
 
 #define DEG_TO_RAD M_PI / 180.0
 
-#define INITIAL_ASTEROIDS 1
 #define SCREEN_W 960
 #define SCREEN_H 640
 
@@ -77,85 +76,69 @@ typedef struct wall {
 
 #define FRAME_DELAY_MS  10
 #define BULLET_DELAY_MS 500
-#define BULLET_LIFE_MS  1000
+#define BULLET_LIFE_MS  600
 
 #define WALL_SIZE 50
 #define WALL_WIDTH 19.2
 #define WALL_HEIGHT 12.8
 #define WALL_BLOCK 2
 #define WALL_BOUNCE 5
+#define BULLET_LIFE_MS  600
 
 #define SHIP_SIZE 50
 #define BULLET_SIZE 26
-#define AST_SIZE_3 100
-#define AST_SIZE_2 40
-#define AST_SIZE_1 15
 
-#define BULLET_VEL 6.0
+#define TANK_SEL_BANNER_SIZE 50
+#define TANK_NOT_SELECTED 4
 
-#define SHIP_MAX_VEL 8.0
+#define BULLET_VEL 10.0
+
+// Tank Parameters
+#define SHIP_MAX_VEL 5.0
 #define SHIP_ACCEL 0.1
-#define SHIP_AVEL  6.0
+#define SHIP_AVEL  2.0
 
 #define BACKGROUND_AVEL 0.01
 
-#define AST_MAX_VEL_3 0
-#define AST_MAX_VEL_2 3.0
-#define AST_MAX_VEL_1 4.0
-#define AST_MAX_AVEL_3 3.0
-#define AST_MAX_AVEL_2 6.0
-#define AST_MAX_AVEL_1 9.0
+// Game Statuses
+#define IN_PLAY        0
+#define PLAYER_ONE_WIN 1
+#define PLAYER_TWO_WIN 2
 
-#define LEFT_BUTTON  !(PINB & _BV(PB7))
-#define RIGHT_BUTTON !(PINB & _BV(PB6))
-#define ACCEL_BUTTON !(PINB & _BV(PB1))
-#define SHOOT_BUTTON !(PINB & _BV(PB0))
 
 static xTaskHandle inputTaskHandle;
 static xTaskHandle bulletTaskHandle;
 static xTaskHandle updateTaskHandle;
+static xTaskHandle uartTaskHandle;
 
 //Mutex used synchronize usart usage
 static xSemaphoreHandle usartMutex;
 
-static object ship;
+static xSemaphoreHandle xSnesMutex;
+static object ship1;
+static object ship2;
 
-uint8_t fire_button = 0;
+uint8_t fire_button1 = 0;
+uint8_t fire_button2 = 0;
 
-//linked lists for asteroids and bullets
-static object *bullets = NULL;
-static object *asteroids = NULL;
+
+uint8_t p1_tank_num, p2_tank_num;
+//linked lists for bullets
+static object *bullets_ship1 = NULL;
+static object *bullets_ship2 = NULL;
 static wall *walls = NULL;
 
-static xGroupHandle astGroup;
 static xGroupHandle wallGroup;
+static xGroupHandle shipGroup1;
+static xGroupHandle shipGroup2;
 static xSpriteHandle background;
 
 void init(void);
 void reset(void);
 wall *createWall(char * image, float x, float y, int16_t angle, wall *nxt, float height, float width);
-object *createBullet(float x, float y, float velx, float vely, object *nxt);
+object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num, int16_t angle, object *nxt);
+void startup(void);
 
-//void controllerTask(void *vParam) {
-	//// variable to hold ticks value of last task run
-	//portTickType xLastWakeTime;
-	//
-	//// Initialize the xLastWakeTime variable with the current time.
-	//xLastWakeTime = xTaskGetTickCount();
-	//snesInit()
-	//
-	//for(;;)
-	//{
-		//uint16_t controller_data;
-		//snesInit();
-		//
-		//while (1) {
-			////xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-			//controller_data = snesData();
-		//vTaskDelay(250/portTICK_RATE_MS);
-	//}
-//}	
-//
 /*------------------------------------------------------------------------------
  * Function: inputTask
  *
@@ -170,7 +153,7 @@ void inputTask(void *vParam) {
      * ship.accel stores if the ship is moving
      * ship.a_vel stores which direction the ship is moving in
      */
-	vTaskDelay(5000/portTICK_RATE_MS);
+	//vTaskDelay(1000/portTICK_RATE_MS);
 	
 	// variable to hold ticks value of last task run
 	portTickType xLastWakeTime;
@@ -178,35 +161,60 @@ void inputTask(void *vParam) {
 	// Initialize the xLastWakeTime variable with the current time.
 	xLastWakeTime = xTaskGetTickCount();
 	
-	
-	uint16_t controller_data; 
-	snesInit(1);
+	snesInit(SNES_2P_MODE); 
+	//snesInit(player_num);
 	
     while (1) {
 		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-		controller_data = snesData(1);
-		DDRF = 0xFF;
-		PORTF = ((controller_data>>4) & 0xFF);
+      //xSemaphoreTake(xSnesMutex, portMAX_DELAY);
+		//controller_data = snesData(player_num);
 		
-		
-		
-		if(controller_data & SNES_LEFT_BTN)
-			ship.a_vel = +SHIP_AVEL;
-		else if(controller_data & SNES_RIGHT_BTN)
-			ship.a_vel = -SHIP_AVEL;
-		else
-			ship.a_vel = 0;
-			
-		if(controller_data & SNES_B_BTN)
-			ship.accel = SHIP_ACCEL;
-		else
-			 ship.accel = 0;
-		
-		if(controller_data & SNES_Y_BTN)
-			 fire_button = 1;
-			
-		vTaskDelay(17/portTICK_RATE_MS);
-	}
+		 
+      DDRF = 0xFF;
+
+      uint16_t controller_data1, controller_data2;
+
+      controller_data1 = snesData(SNES_P1);
+      controller_data2 = snesData(SNES_P2);
+      //PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
+
+      if(controller_data1 & SNES_LEFT_BTN)
+         ship1.a_vel = +SHIP_AVEL;
+      else if(controller_data1 & SNES_RIGHT_BTN)
+         ship1.a_vel = -SHIP_AVEL;
+      else
+         ship1.a_vel = 0;
+   
+      if(controller_data1 & SNES_B_BTN)
+         ship1.accel = SHIP_ACCEL;
+      else {
+         ship1.accel =0;
+         ship1.vel.x = ship1.vel.y = 0;
+      }      
+   
+      if(controller_data1 & SNES_Y_BTN)
+         fire_button1 = 1;
+      
+
+
+      if(controller_data2 & SNES_LEFT_BTN)
+         ship2.a_vel = +SHIP_AVEL;
+      else if(controller_data2 & SNES_RIGHT_BTN)
+         ship2.a_vel = -SHIP_AVEL;
+      else
+         ship2.a_vel = 0;
+      
+      if(controller_data2 & SNES_B_BTN)
+         ship2.accel = SHIP_ACCEL;
+      else {
+         ship2.accel =0;
+         ship2.vel.x = ship2.vel.y = 0;
+      }      
+      if(controller_data2 & SNES_Y_BTN)
+         fire_button2 = 1;
+      //xSemaphoreGive(xSnesMutex);
+      vTaskDelayUntil( &xLastWakeTime, 100/portTICK_RATE_MS);
+   }
 }
 
 /*------------------------------------------------------------------------------
@@ -228,30 +236,44 @@ void bulletTask(void *vParam) {
      * bullets = createBullet(x, y, vx, vy, bullets);
      */
 	// variable to hold ticks value of last task run
-	portTickType xLastWakeTime;
+	//portTickType xLastWakeTime;
    
 	// Initialize the xLastWakeTime variable with the current time.
-	xLastWakeTime = xTaskGetTickCount();
+	//xLastWakeTime = xTaskGetTickCount();
 
-    while (1) {
-	    if(fire_button) {
-			fire_button = 0;
-		    xSemaphoreTake(usartMutex, portMAX_DELAY);
-			 
-          //Make a new bullet and add to linked list
-		    bullets = createBullet(
-            ship.pos.x,
-            ship.pos.y, 
-            -sin(ship.angle*DEG_TO_RAD)*BULLET_VEL, 
-            -cos(ship.angle*DEG_TO_RAD)*BULLET_VEL,
-             bullets);
-			
+   while (1) {
+      if(fire_button1 || fire_button2) {
+         xSemaphoreTake(usartMutex, portMAX_DELAY);
+         if(fire_button1) {
+            fire_button1 = 0;
+            //Make a new bullet and add to linked list
+            bullets_ship1 = createBullet(
+               ship1.pos.x,
+               ship1.pos.y,
+               -sin(ship1.angle*DEG_TO_RAD)*BULLET_VEL,
+               -cos(ship1.angle*DEG_TO_RAD)*BULLET_VEL,
+               SNES_P1,
+               ship1.angle,
+               bullets_ship1);
+         }
+         if(fire_button2) {
+            fire_button2 = 0;
+            //Make a new bullet and add to linked list
+            bullets_ship2 = createBullet(
+               ship2.pos.x,
+               ship2.pos.y,
+               -sin(ship2.angle*DEG_TO_RAD)*BULLET_VEL,
+               -cos(ship2.angle*DEG_TO_RAD)*BULLET_VEL,
+               SNES_P2,
+               ship2.angle,
+               bullets_ship2);
+         }
          xSemaphoreGive(usartMutex);
          vTaskDelay(BULLET_DELAY_MS/portTICK_RATE_MS);
       }
       else
-			vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
-   }
+         vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
+   }         
 }
 
 /*------------------------------------------------------------------------------
@@ -269,54 +291,99 @@ void updateTask(void *vParam) {
 	float vel;
 	object *objIter, *objPrev;
 	for (;;) {
-		// spin ship
-		ship.angle += ship.a_vel;
-		if (ship.angle >= 360)
-         ship.angle -= 360;
-		else if (ship.angle < 0)
-		   ship.angle += 360;
+		// spin ship1
+		ship1.angle += ship1.a_vel;
+		if (ship1.angle >= 360)
+         ship1.angle -= 360;
+		else if (ship1.angle < 0)
+		   ship1.angle += 360;
          
-		// move ship
-		ship.vel.x += ship.accel * -sin(ship.angle * DEG_TO_RAD);
-		ship.vel.y += ship.accel * -cos(ship.angle * DEG_TO_RAD);
-		vel = ship.vel.x * ship.vel.x + ship.vel.y * ship.vel.y;
+      // spin ship2
+      ship2.angle += ship2.a_vel;
+      if (ship2.angle >= 360)
+      ship2.angle -= 360;
+      else if (ship2.angle < 0)
+      ship2.angle += 360;     
+
+		// move ship1
+		ship1.vel.x += ship1.accel * -sin(ship1.angle * DEG_TO_RAD);
+		ship1.vel.y += ship1.accel * -cos(ship1.angle * DEG_TO_RAD);
+		vel = ship1.vel.x * ship1.vel.x + ship1.vel.y * ship1.vel.y;
 		if (vel > SHIP_MAX_VEL) {
-			ship.vel.x *= SHIP_MAX_VEL / vel;
-			ship.vel.y *= SHIP_MAX_VEL / vel;
+			ship1.vel.x *= SHIP_MAX_VEL / vel;
+			ship1.vel.y *= SHIP_MAX_VEL / vel;
 		}
-		ship.pos.x += ship.vel.x;
-		ship.pos.y += ship.vel.y;
+		ship1.pos.x += ship1.vel.x;
+		ship1.pos.y += ship1.vel.y;
 		
-		if (ship.pos.x - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
-			ship.pos.x += WALL_BOUNCE;
-			ship.vel.x = 0;
-			ship.vel.y = 0;
-			ship.accel = 0;
-			ship.a_vel = 0;
-		} else if (ship.pos.x + SHIP_SIZE / 2.0 > SCREEN_W - (WALL_SIZE / 2.1)) {
-			ship.pos.x -= WALL_BOUNCE;
-			ship.vel.x = 0;
-			ship.vel.y = 0;
-			ship.accel = 0;
-			ship.a_vel = 0;
+		if (ship1.pos.x - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+   		ship1.pos.x += WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
+		} else if (ship1.pos.x + SHIP_SIZE / 2.0 > SCREEN_W - (WALL_SIZE / 2.1)) {
+   		ship1.pos.x -= WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
 		}
-		if (ship.pos.y - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
-			ship.pos.y += WALL_BOUNCE;
-			ship.vel.x = 0;
-			ship.vel.y = 0;
-			ship.accel = 0;
-			ship.a_vel = 0;
-		} else if (ship.pos.y + SHIP_SIZE / 2.0 > SCREEN_H - (WALL_SIZE / 2.1)) {
-			ship.pos.y -= WALL_BOUNCE;
-			ship.vel.x = 0;
-			ship.vel.y = 0;
-			ship.accel = 0;
-			ship.a_vel = 0;
+		if (ship1.pos.y - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+   		ship1.pos.y += WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
+		} else if (ship1.pos.y + SHIP_SIZE / 2.0 > SCREEN_H - (WALL_SIZE / 2.1)) {
+   		ship1.pos.y -= WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
 		}
+
+      // move ship2
+      ship2.vel.x += ship2.accel * -sin(ship2.angle * DEG_TO_RAD);
+      ship2.vel.y += ship2.accel * -cos(ship2.angle * DEG_TO_RAD);
+      vel = ship2.vel.x * ship2.vel.x + ship2.vel.y * ship2.vel.y;
+      if (vel > SHIP_MAX_VEL) {
+         ship2.vel.x *= SHIP_MAX_VEL / vel;
+         ship2.vel.y *= SHIP_MAX_VEL / vel;
+      }
+      ship2.pos.x += ship2.vel.x;
+      ship2.pos.y += ship2.vel.y;
+
+      if (ship2.pos.x - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+         ship2.pos.x += WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      } else if (ship2.pos.x + SHIP_SIZE / 2.0 > SCREEN_W - (WALL_SIZE / 2.1)) {
+         ship2.pos.x -= WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      }
+      if (ship2.pos.y - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+         ship2.pos.y += WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      } else if (ship2.pos.y + SHIP_SIZE / 2.0 > SCREEN_H - (WALL_SIZE / 2.1)) {
+         ship2.pos.y -= WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      }
       
-		// move bullets
+		// move bullets_ship1
 		objPrev = NULL;
-		objIter = bullets;
+		objIter = bullets_ship1;
 		while (objIter != NULL) {
 			// Kill bullet after a while
 			objIter->life += FRAME_DELAY_MS;
@@ -328,9 +395,9 @@ void updateTask(void *vParam) {
 					vPortFree(objIter);
 					objIter = objPrev->next;
 				} else {
-					bullets = objIter->next;
+					bullets_ship1 = objIter->next;
 					vPortFree(objIter);
-					objIter = bullets;
+					objIter = bullets_ship1;
 				}
 				xSemaphoreGive(usartMutex);
 			} else {
@@ -352,34 +419,46 @@ void updateTask(void *vParam) {
             objIter = objIter->next;
 			}			
 		}
+
+      // move bullets_ship2
+      objPrev = NULL;
+      objIter = bullets_ship2;
+      while (objIter != NULL) {
+         // Kill bullet after a while
+         objIter->life += FRAME_DELAY_MS;
+         if (objIter->life >= BULLET_LIFE_MS) {
+            xSemaphoreTake(usartMutex, portMAX_DELAY);
+            vSpriteDelete(objIter->handle);
+            if (objPrev != NULL) {
+               objPrev->next = objIter->next;
+               vPortFree(objIter);
+               objIter = objPrev->next;
+            } else {
+               bullets_ship2 = objIter->next;
+               vPortFree(objIter);
+               objIter = bullets_ship2;
+            }
+            xSemaphoreGive(usartMutex);
+         } else {
+            objIter->pos.x += objIter->vel.x;
+            objIter->pos.y += objIter->vel.y;
+
+            if (objIter->pos.x < 0.0) {
+               objIter->pos.x += SCREEN_W;
+            } else if (objIter->pos.x > SCREEN_W) {
+               objIter->pos.x -= SCREEN_W;
+            }
+
+            if (objIter->pos.y < 0.0) {
+               objIter->pos.y += SCREEN_H;
+            } else if (objIter->pos.y > SCREEN_H) {
+               objIter->pos.y -= SCREEN_H;
+            }
+            objPrev = objIter;
+            objIter = objIter->next;
+         }
+      }
 		
-		// move asteroids
-		objPrev = NULL;
-		objIter = asteroids;
-      //iterate through asteroids linked list
-		while (objIter != NULL) {
-         //update position from velocity
-			objIter->pos.x += objIter->vel.x;
-			objIter->pos.y += objIter->vel.y;
-         
-         //wrap around horizontal edges
-			if (objIter->pos.x < 0.0) {
-				objIter->pos.x += SCREEN_W;
-			} else if (objIter->pos.x > SCREEN_W) {
-				objIter->pos.x -= SCREEN_W;
-			}
-         
-         //wrap around vertical edges
-			if (objIter->pos.y < 0.0) {
-				objIter->pos.y += SCREEN_H;
-			} else if (objIter->pos.y > SCREEN_H) {
-				objIter->pos.y -= SCREEN_H;
-			}
-         
-         //move to the next asteroid on the list
-			objPrev = objIter;
-			objIter = objIter->next;
-		}
 		vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
 	}
 }
@@ -399,6 +478,7 @@ void drawTask(void *vParam) {
    wall *wallIter, *wallPrev;
 	xSpriteHandle hit, handle;
 	point topLeft, botRight;
+	uint8_t game_status = IN_PLAY;
 	
 	vTaskSuspend(updateTaskHandle);
 	vTaskSuspend(bulletTaskHandle);
@@ -410,7 +490,7 @@ void drawTask(void *vParam) {
 	
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
-		if (uCollide(ship.handle, wallGroup, &hit, 1) > 0) {
+		if (uCollide(ship1.handle, wallGroup, &hit, 1) > 0) {
    		wallPrev = NULL;
    		wallIter = walls;
    		while (wallIter != NULL) {
@@ -418,25 +498,24 @@ void drawTask(void *vParam) {
       		   topLeft = wallIter->topLeft;
       		   botRight = wallIter->botRight;
       		   //checks collision on x-axis
-      		   if (ship.pos.x > topLeft.x && ship.pos.x < botRight.x) {
-         		   if (abs(ship.pos.y - topLeft.y) < abs(ship.pos.y - botRight.y))
-         		   ship.pos.y -= WALL_BOUNCE;
+      		   if (ship1.pos.x > topLeft.x && ship1.pos.x < botRight.x) {
+         		   if (abs(ship1.pos.y - topLeft.y) < abs(ship1.pos.y - botRight.y))
+         		      ship1.pos.y -= WALL_BOUNCE;
          		   else
-         		   ship.pos.y += WALL_BOUNCE;
+         		      ship1.pos.y += WALL_BOUNCE;
       		   }
       		   
       		   //checks collision on y-axis
-      		   if (ship.pos.y > topLeft.y && ship.pos.y < botRight.x) {
-         		   if (abs(ship.pos.x - topLeft.x) < abs(ship.pos.x - botRight.x))
-         		   ship.pos.x -= WALL_BOUNCE;
+      		   if (ship1.pos.y > topLeft.y && ship1.pos.y < botRight.x) {
+         		   if (abs(ship1.pos.x - topLeft.x) < abs(ship1.pos.x - botRight.x))
+         		      ship1.pos.x -= WALL_BOUNCE;
          		   else
-         		   ship.pos.x += WALL_BOUNCE;
-      		   }
-               
-               ship.vel.x = 0;
-               ship.vel.y = 0;
-               ship.accel = 0;
-               ship.a_vel = 0;
+         		      ship1.pos.x += WALL_BOUNCE;
+               }               
+               ship1.vel.x = 0;
+               ship1.vel.y = 0;
+               ship1.accel = 0;
+               ship1.a_vel = 0;
                
                break;
             } else {
@@ -445,80 +524,142 @@ void drawTask(void *vParam) {
             }
          }
       }
-		vSpriteSetRotation(ship.handle, (uint16_t)ship.angle);
-		vSpriteSetPosition(ship.handle, (uint16_t)ship.pos.x, (uint16_t)ship.pos.y);
+		vSpriteSetRotation(ship1.handle, (uint16_t)ship1.angle);
+		vSpriteSetPosition(ship1.handle, (uint16_t)ship1.pos.x, (uint16_t)ship1.pos.y);
+      
+      if (uCollide(ship2.handle, wallGroup, &hit, 1) > 0) {
+         wallPrev = NULL;
+         wallIter = walls;
+         while (wallIter != NULL) {
+            if (wallIter->handle == hit) {
+               topLeft = wallIter->topLeft;
+               botRight = wallIter->botRight;
+               //checks collision on x-axis
+               if (ship2.pos.x > topLeft.x && ship2.pos.x < botRight.x) {
+                  if (abs(ship2.pos.y - topLeft.y) < abs(ship2.pos.y - botRight.y))
+                  ship2.pos.y -= WALL_BOUNCE;
+                  else
+                  ship2.pos.y += WALL_BOUNCE;
+               }
+         
+               //checks collision on y-axis
+               if (ship2.pos.y > topLeft.y && ship2.pos.y < botRight.x) {
+                  if (abs(ship2.pos.x - topLeft.x) < abs(ship2.pos.x - botRight.x))
+                  ship2.pos.x -= WALL_BOUNCE;
+                  else
+                  ship2.pos.x += WALL_BOUNCE;
+               }
+         
+               ship2.vel.x = 0;
+               ship2.vel.y = 0;
+               ship2.accel = 0;
+               ship2.a_vel = 0;
+         
+               break;
+            } else {
+               wallPrev = wallIter;
+               wallIter = wallIter->next;
+            }
+         }
+      }
+      vSpriteSetRotation(ship2.handle, (uint16_t)ship2.angle);
+      vSpriteSetPosition(ship2.handle, (uint16_t)ship2.pos.x, (uint16_t)ship2.pos.y);
+      
+      // Check hits from ship1
 		objPrev = NULL;
-		objIter = bullets;
+		objIter = bullets_ship1;
 		while (objIter != NULL) {
-			vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
-			if (uCollide(objIter->handle, astGroup, &hit, 1) > 0) {
-				vSpriteDelete(objIter->handle);
-				
-				if (objPrev != NULL) {
-					objPrev->next = objIter->next;
-					vPortFree(objIter);
-					objIter = objPrev->next;
-				} else {
-					bullets = objIter->next;
-					vPortFree(objIter);
-					objIter = bullets;
-				}
-				//astPrev = NULL;
-				//astIter = asteroids;
-				//while (astIter != NULL) {
-					//if (astIter->handle == hit) {
-						//pos = astIter->pos;
-						//size = astIter->size;
-						//vSpriteDelete(astIter->handle);
-						//if (astPrev != NULL) {
-					        //astPrev->next = astIter->next;
-					        //vPortFree(astIter);
-					        //astIter = astPrev->next;
-				        //} else {
-					        //asteroids = astIter->next;
-					        //vPortFree(astIter);
-				        //}
-						//spawnAsteroid(&pos, size);
-						//break;					
-						//
-					//} else {
-						//astPrev = astIter;
-						//astIter = astIter->next;
-					//}
-				//}
-			} else {
-				objPrev = objIter;
-			   objIter = objIter->next;
-			}			
-		}
+   		vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
+         //// Check hits from ship1 on ship2
+         if (uCollide(objIter->handle, shipGroup2, &hit, 1) > 0) {
+      		vSpriteDelete(objIter->handle);
+      		
+      		if (objPrev != NULL) {
+         		objPrev->next = objIter->next;
+         		vPortFree(objIter);
+         		objIter = objPrev->next;
+      		}
+            else {
+         		bullets_ship1 = objIter->next;
+         		vPortFree(objIter);
+         		objIter = bullets_ship1;
+      		}
+            game_status = PLAYER_ONE_WIN;
+		   }
+         else {
+            objPrev = objIter;
+            objIter = objIter->next;
+         }
+      }
 		
-		//objIter = asteroids;
-		//while (objIter != NULL) {
-			//vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
-			//vSpriteSetRotation(objIter->handle, objIter->angle);
-			//objIter = objIter->next;
-		//}			
-				
-		//if (uCollide(ship.handle, astGroup, &hit, 1) > 0 || asteroids == NULL) {
-			//vTaskSuspend(updateTaskHandle);
-			//vTaskSuspend(bulletTaskHandle);
-			//vTaskSuspend(inputTaskHandle);
-			//
-			//if (asteroids == NULL)
-			   //handle = xSpriteCreate("win.png", SCREEN_W>>1, SCREEN_H>>1, 20, SCREEN_W>>1, SCREEN_H>>1, 100);
-			//else
-			   //handle = xSpriteCreate("lose.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
-				//
-			//vTaskDelay(3000 / portTICK_RATE_MS);
-			//vSpriteDelete(handle);
-			//
-			//reset();
-			//init();
-			//
-			//vTaskResume(updateTaskHandle);
-			//vTaskResume(bulletTaskHandle);
-			//vTaskResume(inputTaskHandle);
-		//}
+      // Check hits from ship2
+      objPrev = NULL;
+      objIter = bullets_ship2;
+      while (objIter != NULL) {
+         vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
+         //// Check hits from ship2 on ship1
+         if (uCollide(objIter->handle, shipGroup1, &hit, 1) > 0) {
+            vSpriteDelete(objIter->handle);
+      
+            if (objPrev != NULL) {
+               objPrev->next = objIter->next;
+               vPortFree(objIter);
+               objIter = objPrev->next;
+            }
+            else {
+               bullets_ship2 = objIter->next;
+               vPortFree(objIter);
+               objIter = bullets_ship2;
+            }
+            game_status = PLAYER_TWO_WIN;
+         }
+         else {
+            objPrev = objIter;
+            objIter = objIter->next;
+         }
+      }
+
+      switch(game_status)
+      {
+         case PLAYER_ONE_WIN:
+            vTaskDelete(updateTaskHandle);
+            vTaskDelete(bulletTaskHandle);
+            vTaskDelete(inputTaskHandle);
+            
+            handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 20, SCREEN_W>>1, SCREEN_H>>1, 100);
+            
+            vTaskDelay(2000 / portTICK_RATE_MS);
+            
+            vSpriteDelete(handle);
+            reset();
+            init();            
+            
+            xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+            xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+            xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
+            game_status = IN_PLAY;
+            break;
+         case PLAYER_TWO_WIN: 
+            vTaskDelete(updateTaskHandle);
+            vTaskDelete(bulletTaskHandle);
+            vTaskDelete(inputTaskHandle);
+            
+            handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 20, SCREEN_W>>1, SCREEN_H>>1, 100);
+            
+            vTaskDelay(2000 / portTICK_RATE_MS);
+
+            vSpriteDelete(handle);
+            reset();
+            init();
+
+            xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+            xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+            xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
+            game_status = IN_PLAY;
+            break;
+         default:
+            break;
+      }
 		
 		xSemaphoreGive(usartMutex);
 		vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
@@ -527,23 +668,34 @@ void drawTask(void *vParam) {
 
 int main(void) {
 	DDRB = 0x00;
-	TCCR2A = _BV(CS00); 
-	//snesInit();
+	TCCR2A = _BV(CS00);
+
+   //----test code begin----//
+	//snesInit(SNES_2P_MODE);
+   //uint16_t controller_data1, controller_data2;      	
+   //DDRF = 0xFF;
 	//while(1)
 	//{
-		//snesData();
+		//controller_data1 = snesData(SNES_P1);
+      //controller_data2 = snesData(SNES_P2);
+      //PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
 		//_delay_ms(16);
+      //
 	//}
+   //----test code end----//
+
+   xSnesMutex = xSemaphoreCreateMutex();
 	usartMutex = xSemaphoreCreateMutex();
 	
 	vWindowCreate(SCREEN_W, SCREEN_H);
 	
 	sei();
-	xTaskCreate(inputTask, (signed char *) "i", 80, NULL, 6, &inputTaskHandle);
+
+	xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
 	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
 	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
-	xTaskCreate(drawTask, (signed char *) "d", 600, NULL, 3, NULL);
-	xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, NULL);
+	xTaskCreate(drawTask, (signed char *) "d", 800, NULL, 3, NULL);
+	xTaskCreate(USART_Write_Task, (signed char *) "w", 500, NULL, 5, &uartTaskHandle);
 	
 	vTaskStartScheduler();
 	
@@ -558,71 +710,59 @@ int main(void) {
  *  must be created before this function may be called.
  *----------------------------------------------------------------------------*/
 void init(void) {
+	bullets_ship1 = NULL;
+   bullets_ship2 = NULL;
+   shipGroup1 = ERROR_HANDLE;
+   shipGroup2 = ERROR_HANDLE;
 	
-	bullets = NULL;
-	wallGroup = ERROR_HANDLE;
-	
+   // function to initialize program
+   startup();
 	background = xSpriteCreate("map.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
 	
 	wallGroup = xGroupCreate();
-	
-	//for (i = 0; i < INITIAL_ASTEROIDS; i++) {
-		//asteroids = createAsteroid(
-         //getRandStartPosVal(SCREEN_W >> 1),
-         //getRandStartPosVal(SCREEN_H >> 1),
-         //(rand() % (int8_t)(AST_MAX_VEL_3 * 10)) / 5.0 - AST_MAX_VEL_3,
-         //(rand() % (int8_t)(AST_MAX_VEL_3 * 10)) / 5.0 - AST_MAX_VEL_3,
-         //rand() % 360,
-         //(rand() % (int8_t)(AST_MAX_AVEL_3 * 10)) / 5.0 - AST_MAX_AVEL_3,
-         //3,
-         //asteroids);
-	//}
-	
-	ship.handle = xSpriteCreate(
-      "ship.png", 
-      SHIP_SIZE * 3,
-      SHIP_SIZE * 3, 
-      0, 
-      SHIP_SIZE, 
-      SHIP_SIZE, 
-      10);
-   
-	ship.pos.x = SHIP_SIZE * 3;
-	ship.pos.y = SHIP_SIZE * 3;
-	ship.vel.x = 0;
-	ship.vel.y = 0;
-	ship.accel = 0;
-	ship.angle = 0;
-	ship.a_vel = 0;
-	
-	createWall(
-	   "width_wall.bmp",
-	   SCREEN_W >> 1,
-	   0,
-	   0,
-	   NULL,
-      1,
-      WALL_WIDTH);
-   
-   createWall(
-      "width_wall.bmp",
-      SCREEN_W >> 1,
-      SCREEN_H,
-      0,
-      NULL,
-      1,
-      WALL_WIDTH);
-   
-	createWall(
-      "side_wall.bmp",
-      0, 
+	shipGroup1 = xGroupCreate();
+   shipGroup2 = xGroupCreate();
+ 
+   // Ship1 create
+	ship1.handle = xSpriteCreate(
+      tank_images[p1_tank_num], 
+      SCREEN_W >> 2,
       SCREEN_H >> 1, 
-      0, 
-      NULL,
-      WALL_HEIGHT,
+      270, 
+      SHIP_SIZE, 
+      SHIP_SIZE, 
       1);
+   
+	ship1.pos.x = SCREEN_W >> 2;
+	ship1.pos.y = SCREEN_H >> 1;
+	ship1.vel.x = 0;
+	ship1.vel.y = 0;
+	ship1.accel = 0;
+	ship1.angle = 270;
+	ship1.a_vel = 0;
+
+   // Ship2 create
+   ship2.handle = xSpriteCreate(
+      tank_images[p2_tank_num],
+      SCREEN_W - (SCREEN_W >> 2),
+      SCREEN_H >> 1,
+      90,
+      SHIP_SIZE,
+      SHIP_SIZE,
+      1);
+   
+   ship2.pos.x = SCREEN_W - (SCREEN_W >> 2);
+   ship2.pos.y = SCREEN_H >> 1;
+   ship2.vel.x = 0;
+   ship2.vel.y = 0;
+   ship2.accel = 0;
+   ship2.angle = 90;
+   ship2.a_vel = 0;
+
+   fire_button1 = 0;
+   fire_button2 = 0;
       
    createWall(
       "side_wall.bmp",
@@ -703,15 +843,6 @@ void reset(void) {
 	object *nextObject;
 	wall *nextWall;
    
-	//// removes asteroids
-	//while (asteroids != NULL) {
-		//vSpriteDelete(asteroids->handle);
-		//nextObject = asteroids->next;
-		//vPortFree(asteroids);
-		//asteroids = nextObject;
-	//}
-	//vGroupDelete(astGroup);
-	
 	while (walls != NULL) {
    	vSpriteDelete(walls->handle);
    	nextWall = walls->next;
@@ -720,19 +851,31 @@ void reset(void) {
 	}
 	vGroupDelete(wallGroup);
    
-	// removes bullets
-	while (bullets != NULL) {
-   	vSpriteDelete(bullets->handle);
-   	nextObject = bullets->next;
-   	vPortFree(bullets);
-   	bullets = nextObject;
+   	// removes bullets_ship1
+	while (bullets_ship1 != NULL) {
+   	vSpriteDelete(bullets_ship1->handle);
+   	nextObject = bullets_ship1->next;
+   	vPortFree(bullets_ship1);
+   	bullets_ship1 = nextObject;
+   }
+	// removes bullets_ship2
+	while (bullets_ship2 != NULL) {
+   	vSpriteDelete(bullets_ship2->handle);
+   	nextObject = bullets_ship2->next;
+   	vPortFree(bullets_ship2);
+   	bullets_ship2 = nextObject;
 	}
    
-   //removes the ship
-   vSpriteDelete(ship.handle);
-   
+   //removes the ships
+   vSpriteDelete(ship1.handle);
+   vSpriteDelete(ship2.handle);
+
+   vGroupDelete(shipGroup1);
+   vGroupDelete(shipGroup2);
    //removes the background
    vSpriteDelete(background);
+   
+   USART_Let_Queue_Empty();
 }
 
 wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float height, float width) {
@@ -769,104 +912,6 @@ wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float 
 }
 
 /*------------------------------------------------------------------------------
- * Function: getRandStartPosVal
- *
- * Description: This function calculates a safe starting coordinate for an
- *  asteroid given the half extent of the current window.
- *
- * param dimOver2: Half of the dimension of the window for which a random
- *  coordinate value is desired.
- * return: A safe, pseudorandom coordinate value.
- *----------------------------------------------------------------------------*/
-int16_t getRandStartPosVal(int16_t dimOver2) {
-   return rand() % (dimOver2 - DEAD_ZONE_OVER_2) + (rand() % 2) * (dimOver2 + DEAD_ZONE_OVER_2);
-}
-
-///*------------------------------------------------------------------------------
- //* Function: createAsteroid
- //*
- //* Description: This function creates a new asteroid object with a random
- //*  sprite image.
- //*
- //* param x: The starting x position of the asteroid in window coordinates.
- //* param y: The starting y position of the asteroid in window coordinates.
- //* param velx: The starting x velocity of the asteroid in pixels per frame.
- //* param vely: The starting y velocity of the asteroid in pixels per frame.
- //* param angle: The starting angle of the asteroid in degrees.
- //* param avel: The starting angular velocity of the asteroid in degrees per
- //*  frame.
- //* param size: The starting size of the asteroid. Must be in the range [1,3].
- //* param nxt: A pointer to the next asteroid object in a linked list.
- //* return: A pointer to a malloc'd asteroid object. Must be freed by the calling
- //*  process.
- //*----------------------------------------------------------------------------*/
-//object *createAsteroid(float x, float y, float velx, float vely, int16_t angle, int8_t avel, int8_t size, object *nxt) {
-	///* ToDo:
-     //* Create a new asteroid object using a reentrant malloc() function
-     //* Setup the pointers in the linked list using:
-     //* asteroid->next = nxt;
-     //* Create a new sprite using xSpriteCreate()
-     //* Add new asteroid to the group "astGroup" using:
-     //*	vGroupAddSprite() 
-     //*/
-      ////allocate space for a new asteroid
-      //object *newAsteroid = pvPortMalloc(sizeof(object));
-      //
-      ////setup asteroid sprite
-      //newAsteroid->handle = xSpriteCreate(
-         //astImages[rand() % 3],  //reference to png filename
-         //x,                      //xPos
-         //y,                      //yPos
-         //angle,                  //rAngle
-         //sizeToPix(size),        //width
-         //sizeToPix(size),        //height
-         //1);                     //depth
-      //
-      ////set position
-      //newAsteroid->pos.x = x;
-      //newAsteroid->pos.y = y;
-      ////set velocity
-      //newAsteroid->vel.x = velx;
-      //newAsteroid->vel.y = vely;
-      ////set angle
-      //newAsteroid->angle = angle;
-      ////set angular acceleration
-      //newAsteroid->a_vel = avel;
-      //newAsteroid->size = size;
-      ////link to asteroids list
-      //newAsteroid->next = asteroids;
-      ////add to asteroids sprite group
-      //vGroupAddSprite(astGroup, newAsteroid->handle);
-      //
-      ////return pointer to new asteroid
-      //return newAsteroid;
-//}
-//
-///*------------------------------------------------------------------------------
- //* Function: sizeToPix
- //*
- //* Description: This function converts a size enumeration value in the range
- //*  [1,3] to its corresponding pixel dimension.
- //*
- //* param size: A number in the range [1-3]
- //* return: A pixel size which may be used to appropriately scale an asteroid
- //*  sprite.
- //*----------------------------------------------------------------------------*/
-//uint16_t sizeToPix(int8_t size) {
-	//switch (size) {
-		//case 3:
-		    //return AST_SIZE_3;
-		//case 2:
-		    //return AST_SIZE_2;
-		//case 1:
-		    //return AST_SIZE_1;
-		//default:
-		    //return AST_SIZE_3 << 2;
-	//}
-	//return AST_SIZE_3 << 2;
-//}
-
-/*------------------------------------------------------------------------------
  * Function: createBullet
  *
  * Description: This function creates a new bullet object.
@@ -879,21 +924,32 @@ int16_t getRandStartPosVal(int16_t dimOver2) {
  * return: A pointer to a malloc'd bullet object. This pointer must be freed by
  *  the caller.
  *----------------------------------------------------------------------------*/
-object *createBullet(float x, float y, float velx, float vely, object *nxt) {
+object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num, int16_t angle, object *nxt) {
 	//Create a new bullet object using a reentrant malloc() function
 	object *newBullet = pvPortMalloc(sizeof(object));
 	
 	//Setup the pointers in the linked list
 	//Create a new sprite using xSpriteCreate()
-	newBullet->handle = xSpriteCreate(
-	"bullet.png",			//reference to png filename
-	x,                   //xPos
-	y,                   //yPos
-	ship.angle,          //rAngle
-	BULLET_SIZE,			//width
-	BULLET_SIZE,			//height
-	1);                  //depth
-   
+   if(ship_num == 2) {
+   	newBullet->handle = xSpriteCreate(
+	      "bullet2.png",			//reference to png filename
+	      x,                   //xPos
+	      y,                   //yPos
+	      angle,                //rAngle
+	      BULLET_SIZE,			//width
+	      BULLET_SIZE,			//height
+	      1);                  //depth
+   }
+   else {
+   	newBullet->handle = xSpriteCreate(
+         "bullet1.png",			//reference to png filename
+         x,                   //xPos
+         y,                   //yPos
+         angle,                //rAngle
+         BULLET_SIZE,			//width
+         BULLET_SIZE,			//height
+         1);                  //depth
+   }
    //set position
    newBullet->pos.x = x;
    newBullet->pos.y = y;
@@ -906,56 +962,137 @@ object *createBullet(float x, float y, float velx, float vely, object *nxt) {
    newBullet->life = 0;
    //link to bullets list
    newBullet->next = nxt;
-   
    //return pointer to the new bullet
    return (newBullet); 
 }
 
-/*------------------------------------------------------------------------------
- * Function: spawnAsteroid
- *
- * Description: This function decomposes a larger asteroid into three smaller
- *  ones with random velocities and appends them to the global list of
- *  asteroids.
- *
- * param pos: A pointer to the position at which the new asteroids will be
- *  created.
- * param size: The size of the asteroid being destroyed.
- *----------------------------------------------------------------------------*/
-//void spawnAsteroid(point *pos, uint8_t size) {
-	///* ToDo:
-     //* Spawn 3 smaller asteroids, or no asteroids depending on the size of this asteroid
-     //* Use createAsteroid()
-     //*/
-   //int vel, accel;
-   //if (size > 1) {
-      ////spawn 3 new asteroids
-	   //for(int i = 0; i < 3; i++) {
-         ////set max velocity for the new size
-         //switch (size - 1) {
-            //case 2:
-            //vel = AST_MAX_VEL_2;
-            //accel = AST_MAX_AVEL_2;
-            //break;
-            //case 1:
-            //vel = AST_MAX_VEL_1;
-            //accel = AST_MAX_AVEL_1;
-            //break;
-            //default:
-            //vel = AST_MAX_VEL_3;
-            //accel = AST_MAX_AVEL_3;
-            //break;
-         //}
-      //
-         //asteroids = createAsteroid(
-            //pos->x,                                         //x pos
-            //pos->y,                                         //y pos
-            //(rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //x vel
-            //(rand() % (int8_t)(vel * 10)) / 5.0 - vel,      //y vel
-            //rand() % 360,                                   //angle
-            //(rand() % (int8_t)(accel * 10)) / 5.0 - accel,  //accel
-            //size - 1,                                       //size
-            //asteroids);                                     //next asteroid
-      //}
-   //}   
-//}																																		
+void startup(void) {
+   p1_tank_num = TANK_NOT_SELECTED;
+   p2_tank_num = TANK_NOT_SELECTED;
+   uint16_t controller_data1 = 0;
+   uint16_t controller_data2 = 0;
+   uint8_t press_start_loop_count = 0;
+   xSpriteHandle p1, p2;
+   xSpriteHandle press_start;
+   // Print opening start screen
+   xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+   _delay_ms(500);
+   //xSpriteHandle press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
+   
+   // Initailize SNES Controllers
+   snesInit(SNES_2P_MODE);
+   // Wait for player1 to press start
+   while(!(controller_data1 & SNES_STRT_BTN)) {
+      controller_data1 = snesData(SNES_P1);
+      _delay_ms(17);
+
+      if(press_start_loop_count++ == 30)
+         press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
+      else if(press_start_loop_count == 60) {
+         vSpriteDelete(press_start);
+         press_start_loop_count = 0; 
+      } 
+   }
+   _delay_ms(250);
+   if(press_start_loop_count >= 30)
+      vSpriteDelete(press_start);
+      
+   _delay_ms(500);
+   vSpriteDelete(start_screen);
+   
+   // Display the tank select screen
+   xSpriteHandle select_screen = xSpriteCreate("select_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+    
+   controller_data1 = 0;
+   controller_data2 = 0;
+   
+   // get a valid tank selection from both controllers
+   while((p1_tank_num == TANK_NOT_SELECTED) || (p2_tank_num == TANK_NOT_SELECTED)) {
+      if(p1_tank_num == TANK_NOT_SELECTED) {
+         controller_data1 = snesData(SNES_P1);
+         switch(controller_data1) {
+            case SNES_A_BTN:
+               p1_tank_num = 0;
+               break;
+            case SNES_B_BTN:
+               p1_tank_num = 1;
+               break;
+            case SNES_X_BTN:
+               p1_tank_num = 2;
+               break;
+            case SNES_Y_BTN:
+               p1_tank_num = 3;
+               break;
+            default:
+               p1_tank_num = TANK_NOT_SELECTED;
+               break;
+         }
+         
+         if(p1_tank_num != TANK_NOT_SELECTED) {
+            switch(p1_tank_num) {
+               case 0:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 1:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 2:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 3:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               default:
+                  break;
+            }
+         }
+      }
+
+      
+      if(p2_tank_num == TANK_NOT_SELECTED) {
+         controller_data2 = snesData(SNES_P2);
+         switch(controller_data2) {
+            case SNES_A_BTN:
+               p2_tank_num = 0;
+               break;
+            case SNES_B_BTN:
+               p2_tank_num = 1;
+               break;
+            case SNES_X_BTN:
+               p2_tank_num = 2;
+               break;
+            case SNES_Y_BTN:
+               p2_tank_num = 3;
+               break;
+            default:
+               p2_tank_num = TANK_NOT_SELECTED;
+               break;
+         }
+         if(p2_tank_num != TANK_NOT_SELECTED) {
+            switch(p2_tank_num) {
+               case 0:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 1:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 2:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 3:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               default:
+                  break;
+            }
+         }         
+      }
+      
+      _delay_ms(17);
+   }
+   _delay_ms(1000);
+   vSpriteDelete(p1);
+   vSpriteDelete(p2);
+   vSpriteDelete(select_screen);
+}
+																															

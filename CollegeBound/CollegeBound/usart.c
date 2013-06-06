@@ -40,7 +40,7 @@ void USART_Init(uint16_t baudin, uint32_t clk_speedin) {
 	// clear U2X0 for Synchronous operation
     UCSR0A &= ~(1<<U2X0);
 	
-	xUsartQueue = xQueueCreate( 150, sizeof( uint8_t ));
+	xUsartQueue = xQueueCreate( QUEUE_SIZE, sizeof( uint8_t ));
 }
 
 /************************************
