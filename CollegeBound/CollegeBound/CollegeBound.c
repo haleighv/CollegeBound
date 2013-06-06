@@ -95,9 +95,11 @@ typedef struct wall {
 #define WALL_HEIGHT 12.8
 #define WALL_BLOCK 2
 #define WALL_BOUNCE 5
+#define WALL_EDGE WALL_SIZE / 2.2
 
-#define SHIP_SIZE 50
-#define BULLET_SIZE 26
+#define SHIP_SIZE 60
+#define SHIP_OFFSET SHIP_SIZE / 2.0
+#define BULLET_SIZE 20
 
 #define TANK_SEL_BANNER_SIZE 100
 #define TANK_NOT_SELECTED 4
@@ -105,7 +107,7 @@ typedef struct wall {
 #define BULLET_VEL 8.0
 
 // Tank Parameters
-#define SHIP_MAX_VEL 2.0
+#define SHIP_MAX_VEL 3.0
 #define SHIP_ACCEL 0.05
 #define SHIP_AVEL  1.0
 
