@@ -33,10 +33,10 @@
 #include "snes.h"
 
 const char* tank_images[] = {
+   "tank0.png",
    "tank1.png",
    "tank2.png",
-   "tank3.png",
-   "tank4.png"};
+   "tank3.png"};
 
 
 //represents a point on the screen
@@ -79,9 +79,10 @@ typedef struct object_s {
 
 #define BULLET_VEL 10.0
 
-#define SHIP_MAX_VEL 15.0
+// Tank Parameters
+#define SHIP_MAX_VEL 5.0
 #define SHIP_ACCEL 0.1
-#define SHIP_AVEL  4.0
+#define SHIP_AVEL  2.0
 
 #define BACKGROUND_AVEL 0.01
 
@@ -173,8 +174,10 @@ void inputTask(void *vParam) {
    
       if(controller_data1 & SNES_B_BTN)
          ship1.accel = SHIP_ACCEL;
-      else
+      else{
          ship1.accel =0;
+         ship1.vel.x = ship1.vel.y = 0;
+      }      
    
       if(controller_data1 & SNES_Y_BTN)
          fire_button1 = 1;
@@ -190,9 +193,10 @@ void inputTask(void *vParam) {
       
       if(controller_data2 & SNES_B_BTN)
          ship2.accel = SHIP_ACCEL;
-      else
+      else{
          ship2.accel =0;
-      
+         ship2.vel.x = ship2.vel.y = 0;
+      }      
       if(controller_data2 & SNES_Y_BTN)
          fire_button2 = 1;
       //xSemaphoreGive(xSnesMutex);
@@ -784,7 +788,7 @@ void startup(void){
    xSpriteHandle press_start;
    // Print opening start screen
    xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
-   _delay_ms(1500);
+   _delay_ms(500);
    //xSpriteHandle press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
    
    // Initailize SNES Controllers
@@ -795,16 +799,16 @@ void startup(void){
       controller_data1 = snesData(SNES_P1);
       _delay_ms(17);
 
-      if(press_start_loop_count++ == 50)
+      if(press_start_loop_count++ == 30)
          press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
-      else if(press_start_loop_count == 100)
+      else if(press_start_loop_count == 60)
       {
          vSpriteDelete(press_start);
          press_start_loop_count = 0; 
       } 
    }
    _delay_ms(250);
-   if(press_start_loop_count >= 50)
+   if(press_start_loop_count >= 30)
       vSpriteDelete(press_start);
       
    _delay_ms(500);
@@ -840,27 +844,29 @@ void startup(void){
                p1_tank_num = TANK_NOT_SELECTED;
                break;
          }
-      }
-      else
-      {
-         switch(p1_tank_num)
+         
+         if(p1_tank_num != TANK_NOT_SELECTED)
          {
-            case 0:
-                p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 1:
-               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 2:
-               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 3:
-               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            default:
-               break;
+            switch(p1_tank_num)
+            {
+               case 0:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 1:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 2:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 3:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               default:
+                  break;
+            }
          }
       }
+
       
       if(p2_tank_num == TANK_NOT_SELECTED)
       {
@@ -883,65 +889,29 @@ void startup(void){
                p2_tank_num = TANK_NOT_SELECTED;
                break;
          }
-      }
-      else
-      {
-         switch(p2_tank_num)
+         if(p2_tank_num != TANK_NOT_SELECTED)
          {
-            case 0:
-               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 1:
-               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 2:
-               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            case 3:
-               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-               break;
-            default:
-               break;
-         }
+            switch(p2_tank_num)
+            {
+               case 0:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 1:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 2:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               case 3:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+                  break;
+               default:
+                  break;
+            }
+         }         
       }
+      
       _delay_ms(17);
-   }
-   // Print out player selections again
-   vSpriteDelete(p1);
-   vSpriteDelete(p2);
-   switch(p1_tank_num)
-   {
-      case 0:
-         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-         break;
-      case 1:
-         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-         break;
-      case 2:
-         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-         break;
-      case 3:
-         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
-         break;
-      default:
-         break;
-   }
-   switch(p2_tank_num)
-   {
-      case 0:
-         p2 = xSpriteCreate("p2.png",((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
-         break;
-      case 1:
-         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
-         break;
-      case 2:
-         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
-         break;
-      case 3:
-         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
-         break;
-      default:
-      break;
    }
    _delay_ms(1000);
    vSpriteDelete(p1);
