@@ -38,7 +38,19 @@ const char* tank_images[] = {
    "tank2.png",
    "tank3.png"};
 
+const char* bullet_images[] = {
+   "bullet0.png",
+   "bullet1.png",
+   "bullet2.png",
+   "bullet3.png"};
 
+const char* bro_tank_images[] = {
+   "bro_tank0.png",
+   "bro_tank1.png",
+   "bro_tank2.png",
+   "bro_tank3.png"};
+   
+   
 //represents a point on the screen
 typedef struct {
 	float x;
@@ -74,15 +86,15 @@ typedef struct object_s {
 
 #define SHIP_SIZE 50
 #define BULLET_SIZE 26
-#define TANK_SEL_BANNER_SIZE 50
+#define TANK_SEL_BANNER_SIZE 100
 #define TANK_NOT_SELECTED 4
 
-#define BULLET_VEL 10.0
+#define BULLET_VEL 8.0
 
 // Tank Parameters
-#define SHIP_MAX_VEL 5.0
-#define SHIP_ACCEL 0.1
-#define SHIP_AVEL  2.0
+#define SHIP_MAX_VEL 2.0
+#define SHIP_ACCEL 0.05
+#define SHIP_AVEL  1.0
 
 #define BACKGROUND_AVEL 0.01
 
@@ -113,7 +125,6 @@ uint8_t p1_tank_num, p2_tank_num;
 static object *bullets_ship1 = NULL;
 static object *bullets_ship2 = NULL;
 
-static xGroupHandle astGroup;
 static xGroupHandle shipGroup1;
 static xGroupHandle shipGroup2;
 static xSpriteHandle background;
@@ -181,7 +192,6 @@ void inputTask(void *vParam) {
    
       if(controller_data1 & SNES_Y_BTN)
          fire_button1 = 1;
-      
 
 
       if(controller_data2 & SNES_LEFT_BTN)
@@ -192,11 +202,12 @@ void inputTask(void *vParam) {
          ship2.a_vel = 0;
       
       if(controller_data2 & SNES_B_BTN)
-         ship2.accel = SHIP_ACCEL;
+         ship2.accel = SHIP_ACCEL;         
       else{
-         ship2.accel =0;
          ship2.vel.x = ship2.vel.y = 0;
-      }      
+         ship2.accel = 0;
+      }            
+            
       if(controller_data2 & SNES_Y_BTN)
          fire_button2 = 1;
       //xSemaphoreGive(xSnesMutex);
@@ -511,9 +522,9 @@ void drawTask(void *vParam) {
             vTaskDelete(bulletTaskHandle);
             vTaskDelete(inputTaskHandle);
             
-            handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 20, SCREEN_W>>1, SCREEN_H>>1, 100);
+            handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
             
-            vTaskDelay(2000 / portTICK_RATE_MS);
+            vTaskDelay(3000 / portTICK_RATE_MS);
             
             vSpriteDelete(handle);
             reset();
@@ -529,9 +540,9 @@ void drawTask(void *vParam) {
             vTaskDelete(bulletTaskHandle);
             vTaskDelete(inputTaskHandle);
             
-            handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 20, SCREEN_W>>1, SCREEN_H>>1, 100);
+            handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
             
-            vTaskDelay(2000 / portTICK_RATE_MS);
+            vTaskDelay(3000 / portTICK_RATE_MS);
 
             vSpriteDelete(handle);
             reset();
@@ -602,7 +613,6 @@ void init(void) {
    bullets_ship2 = NULL;
    shipGroup1 = ERROR_HANDLE;
    shipGroup2 = ERROR_HANDLE;
-	astGroup = ERROR_HANDLE;
 	
    // function to initialize program
    startup();
@@ -744,7 +754,7 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num,
 	//Create a new sprite using xSpriteCreate()
    if(ship_num == 2)
    {	newBullet->handle = xSpriteCreate(
-	   "bullet2.png",			//reference to png filename
+	   bullet_images[p2_tank_num],			//reference to png filename
 	   x,                   //xPos
 	   y,                   //yPos
 	   angle,                //rAngle
@@ -754,7 +764,7 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num,
    }
    else
    {	newBullet->handle = xSpriteCreate(
-      "bullet1.png",			//reference to png filename
+      bullet_images[p1_tank_num],			//reference to png filename
       x,                   //xPos
       y,                   //yPos
       angle,                //rAngle
@@ -788,7 +798,6 @@ void startup(void){
    xSpriteHandle press_start;
    // Print opening start screen
    xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
-   _delay_ms(500);
    //xSpriteHandle press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
    
    // Initailize SNES Controllers
