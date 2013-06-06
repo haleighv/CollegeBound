@@ -90,6 +90,33 @@ uint8_t USART_Read(void) {
     return UDR0;
 }
 
+
+/************************************
+* Function: USART_Queue_Reset
+*
+* Description: Resets Queue to be empty
+*
+* Param vParam: This parameter is not used.
+************************************/
+void USART_Queue_Reset(void){
+   xQueueReset(xUsartQueue);
+}
+
+
+
+/************************************
+* Function: USART_Let_Queue_Empty
+*
+* Description: Waits for queue to empty
+*
+* Param vParam: This parameter is not used.
+************************************/
+void USART_Let_Queue_Empty(void){
+   void* pvBuffer; 
+   while (xQueuePeek(xUsartQueue, pvBuffer, 0) == pdTRUE){};  
+}
+
+
 /************************************
 * Function: USART_Write_Task
 *
@@ -99,6 +126,7 @@ uint8_t USART_Read(void) {
 ************************************/
 void USART_Write_Task(void *vParam) {
 	uint8_t uart_data;
+
     while (1) {
 		xQueueReceive( xUsartQueue, &uart_data, portMAX_DELAY);
 		USART_Write_Unprotected(uart_data);
