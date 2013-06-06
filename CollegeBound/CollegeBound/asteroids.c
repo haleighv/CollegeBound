@@ -387,8 +387,27 @@ void drawTask(void *vParam) {
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
 		if (uCollide(ship.handle, wallGroup, &hit, 1) > 0) {
-   		ship.pos.x -= ship.vel.x*10;
-   		ship.pos.y -= ship.vel.y*10;
+   		objPrev = NULL;
+   		objIter = walls;
+   		while (objIter != NULL) {
+            if (objIter->handle == hit) {
+      		   pos = objIter->pos;
+               break;
+            } else {
+               objPrev = objIter;
+               objIter = objIter->next;
+            }
+         }
+   		//if (ship.pos.x > pos.x)
+   		   //ship.pos.x = pos.x + WALL_SIZE;
+   		//else
+   		   //ship.pos.x = pos.x - WALL_SIZE;
+   		if (ship.pos.y > pos.y)
+            ship.pos.y = pos.y + WALL_SIZE;
+         else
+            ship.pos.y = pos.y - WALL_SIZE;
+            
+         //ship.pos.x -= ship.vel.x*10;
          ship.vel.x = 0;
          ship.vel.y = 0;
    		ship.accel = 0;
