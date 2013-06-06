@@ -140,6 +140,7 @@ uint8_t p1_tank_num, p2_tank_num;
 static object *bullets_ship1 = NULL;
 static object *bullets_ship2 = NULL;
 static wall *walls = NULL;
+static wall *borders = NULL;
 
 static xGroupHandle wallGroup;
 static xGroupHandle shipGroup1;
@@ -329,26 +330,26 @@ void updateTask(void *vParam) {
 		ship1.pos.x += ship1.vel.x;
 		ship1.pos.y += ship1.vel.y;
 		
-		if (ship1.pos.x - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+		if (ship1.pos.x - SHIP_OFFSET < WALL_EDGE) {
    		ship1.pos.x += WALL_BOUNCE;
    		ship1.vel.x = 0;
    		ship1.vel.y = 0;
    		ship1.accel = 0;
    		ship1.a_vel = 0;
-		} else if (ship1.pos.x + SHIP_SIZE / 2.0 > SCREEN_W - (WALL_SIZE / 2.1)) {
+		} else if (ship1.pos.x + SHIP_OFFSET > SCREEN_W - (WALL_EDGE)) {
    		ship1.pos.x -= WALL_BOUNCE;
    		ship1.vel.x = 0;
    		ship1.vel.y = 0;
    		ship1.accel = 0;
    		ship1.a_vel = 0;
 		}
-		if (ship1.pos.y - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+		if (ship1.pos.y - SHIP_OFFSET < WALL_EDGE) {
    		ship1.pos.y += WALL_BOUNCE;
    		ship1.vel.x = 0;
    		ship1.vel.y = 0;
    		ship1.accel = 0;
    		ship1.a_vel = 0;
-		} else if (ship1.pos.y + SHIP_SIZE / 2.0 > SCREEN_H - (WALL_SIZE / 2.1)) {
+		} else if (ship1.pos.y + SHIP_OFFSET > SCREEN_H - (WALL_EDGE)) {
    		ship1.pos.y -= WALL_BOUNCE;
    		ship1.vel.x = 0;
    		ship1.vel.y = 0;
@@ -367,26 +368,26 @@ void updateTask(void *vParam) {
       ship2.pos.x += ship2.vel.x;
       ship2.pos.y += ship2.vel.y;
 
-      if (ship2.pos.x - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+      if (ship2.pos.x - SHIP_OFFSET < WALL_EDGE) {
          ship2.pos.x += WALL_BOUNCE;
          ship2.vel.x = 0;
          ship2.vel.y = 0;
          ship2.accel = 0;
          ship2.a_vel = 0;
-      } else if (ship2.pos.x + SHIP_SIZE / 2.0 > SCREEN_W - (WALL_SIZE / 2.1)) {
+      } else if (ship2.pos.x + SHIP_OFFSET > SCREEN_W - (WALL_EDGE)) {
          ship2.pos.x -= WALL_BOUNCE;
          ship2.vel.x = 0;
          ship2.vel.y = 0;
          ship2.accel = 0;
          ship2.a_vel = 0;
       }
-      if (ship2.pos.y - SHIP_SIZE / 2.0 < WALL_SIZE / 2.1) {
+      if (ship2.pos.y - SHIP_OFFSET < WALL_EDGE) {
          ship2.pos.y += WALL_BOUNCE;
          ship2.vel.x = 0;
          ship2.vel.y = 0;
          ship2.accel = 0;
          ship2.a_vel = 0;
-      } else if (ship2.pos.y + SHIP_SIZE / 2.0 > SCREEN_H - (WALL_SIZE / 2.1)) {
+      } else if (ship2.pos.y + SHIP_OFFSET > SCREEN_H - (WALL_EDGE)) {
          ship2.pos.y -= WALL_BOUNCE;
          ship2.vel.x = 0;
          ship2.vel.y = 0;
@@ -599,6 +600,20 @@ void drawTask(void *vParam) {
       		}
             game_status = PLAYER_ONE_WIN;
 		   }
+         else if (uCollide(objIter->handle, wallGroup, &hit, 1) > 0) {
+            vSpriteDelete(objIter->handle);
+            
+            if (objPrev != NULL) {
+               objPrev->next = objIter->next;
+               vPortFree(objIter);
+               objIter = objPrev->next;
+            }
+            else {
+               bullets_ship1 = objIter->next;
+               vPortFree(objIter);
+               objIter = bullets_ship1;
+            }
+         }
          else {
             objPrev = objIter;
             objIter = objIter->next;
@@ -625,6 +640,20 @@ void drawTask(void *vParam) {
                objIter = bullets_ship2;
             }
             game_status = PLAYER_TWO_WIN;
+         }
+         else if (uCollide(objIter->handle, wallGroup, &hit, 1) > 0) {
+            vSpriteDelete(objIter->handle);
+            
+            if (objPrev != NULL) {
+               objPrev->next = objIter->next;
+               vPortFree(objIter);
+               objIter = objPrev->next;
+            }
+            else {
+               bullets_ship2 = objIter->next;
+               vPortFree(objIter);
+               objIter = bullets_ship2;
+            }
          }
          else {
             objPrev = objIter;
@@ -776,13 +805,40 @@ void init(void) {
 
    fire_button1 = 0;
    fire_button2 = 0;
+   
+   borders = createWall(
+      "width_wall.bmp",
+      SCREEN_W >> 1,
+      0,
+      0,
+      borders,
+      1,
+      WALL_WIDTH);
       
-   createWall(
+   borders = createWall(
+      "width_wall.bmp",
+      SCREEN_W >> 1,
+      SCREEN_H,
+      0,
+      borders,
+      1,
+      WALL_WIDTH);
+   
+   borders = createWall(
+      "side_wall.bmp",
+      0,
+      SCREEN_H >> 1,
+      0,
+      borders,
+      WALL_HEIGHT,
+      1);
+   
+   borders = createWall(
       "side_wall.bmp",
       SCREEN_W,
       SCREEN_H >> 1,
       0,
-      NULL,
+      borders,
       WALL_HEIGHT,
       1);
       
@@ -868,7 +924,14 @@ void reset(void) {
 	}
 	vGroupDelete(wallGroup);
 
-   	// removes bullets_ship1
+   while (borders != NULL) {
+      vSpriteDelete(borders->handle);
+      nextWall = borders->next;
+      vPortFree(borders);
+      borders = nextWall;
+   }
+   
+   // removes bullets_ship1
 	while (bullets_ship1 != NULL) {
    	vSpriteDelete(bullets_ship1->handle);
    	nextObject = bullets_ship1->next;
