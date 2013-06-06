@@ -32,6 +32,13 @@
 #include "usart.h"
 #include "snes.h"
 
+const char* tank_images[] = {
+   "tank1.png",
+   "tank2.png",
+   "tank3.png",
+   "tank4.png"};
+
+
 //represents a point on the screen
 typedef struct {
 	float x;
@@ -67,6 +74,8 @@ typedef struct object_s {
 
 #define SHIP_SIZE 50
 #define BULLET_SIZE 26
+#define TANK_SEL_BANNER_SIZE 50
+#define TANK_NOT_SELECTED 4
 
 #define BULLET_VEL 10.0
 
@@ -97,6 +106,8 @@ static object ship2;
 uint8_t fire_button1 = 0;
 uint8_t fire_button2 = 0;
 
+
+uint8_t p1_tank_num, p2_tank_num;
 //linked lists for bullets
 static object *bullets_ship1 = NULL;
 static object *bullets_ship2 = NULL;
@@ -111,28 +122,9 @@ void reset(void);
 int16_t getRandStartPosVal(int16_t dimOver2);
 uint16_t sizeToPix(int8_t size);
 object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num, int16_t angle, object *nxt);
+void startup(void);
 
 
-//void controllerTask(void *vParam) {
-	//// variable to hold ticks value of last task run
-	//portTickType xLastWakeTime;
-	//
-	//// Initialize the xLastWakeTime variable with the current time.
-	//xLastWakeTime = xTaskGetTickCount();
-	//snesInit()
-	//
-	//for(;;)
-	//{
-		//uint16_t controller_data;
-		//snesInit();
-		//
-		//while (1) {
-			////xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
-			//controller_data = snesData();
-		//vTaskDelay(250/portTICK_RATE_MS);
-	//}
-//}	
-//
 /*------------------------------------------------------------------------------
  * Function: inputTask
  *
@@ -227,10 +219,10 @@ void bulletTask(void *vParam) {
      * bullets = createBullet(x, y, vx, vy, bullets);
      */
 	// variable to hold ticks value of last task run
-	portTickType xLastWakeTime;
+	//portTickType xLastWakeTime;
    
 	// Initialize the xLastWakeTime variable with the current time.
-	xLastWakeTime = xTaskGetTickCount();
+	//xLastWakeTime = xTaskGetTickCount();
 
    while (1) {
       if(fire_button1 || fire_button2) {
@@ -436,10 +428,9 @@ void updateTask(void *vParam) {
  * param vParam: This parameter is not used.
  *----------------------------------------------------------------------------*/
 void drawTask(void *vParam) {
-	object *objIter, *objPrev, *objTemp;
+	object *objIter, *objPrev;
 	xSpriteHandle hit, handle;
-	point pos;
-	uint8_t size, game_status = IN_PLAY;
+	uint8_t game_status = IN_PLAY;
 	
 	vTaskSuspend(updateTaskHandle);
 	vTaskSuspend(bulletTaskHandle);
@@ -588,7 +579,7 @@ int main(void) {
 	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
 	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
 	xTaskCreate(drawTask, (signed char *) "d", 800, NULL, 3, NULL);
-	xTaskCreate(USART_Write_Task, (signed char *) "w", 200, NULL, 5, &uartTaskHandle);
+	xTaskCreate(USART_Write_Task, (signed char *) "w", 500, NULL, 5, &uartTaskHandle);
 	
 	vTaskStartScheduler();
 	
@@ -602,16 +593,16 @@ int main(void) {
  * Description: This function initializes a new game of asteroids. A window
  *  must be created before this function may be called.
  *----------------------------------------------------------------------------*/
-void init(void) {
-	int i;
-	
+void init(void) {	
 	bullets_ship1 = NULL;
    bullets_ship2 = NULL;
    shipGroup1 = ERROR_HANDLE;
    shipGroup2 = ERROR_HANDLE;
 	astGroup = ERROR_HANDLE;
 	
-	background = xSpriteCreate("stars.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+   // function to initialize program
+   startup();
+	background = xSpriteCreate("map.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
 	
@@ -620,7 +611,7 @@ void init(void) {
 	
    // Ship1 create
 	ship1.handle = xSpriteCreate(
-      "ship2.png", 
+      tank_images[p1_tank_num], 
       SCREEN_W >> 2,
       SCREEN_H >> 1, 
       270, 
@@ -638,7 +629,7 @@ void init(void) {
 
    // Ship2 create
    ship2.handle = xSpriteCreate(
-      "ship.png",
+      tank_images[p2_tank_num],
       SCREEN_W - (SCREEN_W >> 2),
       SCREEN_H >> 1,
       90,
@@ -781,5 +772,180 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num,
    newBullet->next = nxt;
    //return pointer to the new bullet
    return (newBullet); 
+}
+
+void startup(void){
+   p1_tank_num = TANK_NOT_SELECTED;
+   p2_tank_num = TANK_NOT_SELECTED;
+   uint16_t controller_data1 = 0;
+   uint16_t controller_data2 = 0;
+   uint8_t press_start_loop_count = 0;
+   xSpriteHandle p1, p2;
+   xSpriteHandle press_start;
+   // Print opening start screen
+   xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+   _delay_ms(1500);
+   //xSpriteHandle press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
+   
+   // Initailize SNES Controllers
+   snesInit(SNES_2P_MODE);
+   // Wait for player1 to press start
+   while(!(controller_data1 & SNES_STRT_BTN))
+   {
+      controller_data1 = snesData(SNES_P1);
+      _delay_ms(17);
+
+      if(press_start_loop_count++ == 50)
+         press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
+      else if(press_start_loop_count == 100)
+      {
+         vSpriteDelete(press_start);
+         press_start_loop_count = 0; 
+      } 
+   }
+   _delay_ms(250);
+   if(press_start_loop_count >= 50)
+      vSpriteDelete(press_start);
+      
+   _delay_ms(500);
+   vSpriteDelete(start_screen);
+   
+   // Display the tank select screen
+   xSpriteHandle select_screen = xSpriteCreate("select_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
+    
+   controller_data1 = 0;
+   controller_data2 = 0;
+   
+   // get a valid tank selection from both controllers
+   while((p1_tank_num == TANK_NOT_SELECTED) || (p2_tank_num == TANK_NOT_SELECTED))
+   {
+      if(p1_tank_num == TANK_NOT_SELECTED)
+      {
+         controller_data1 = snesData(SNES_P1);
+         switch(controller_data1)
+         {
+            case SNES_A_BTN:
+               p1_tank_num = 0;
+               break;
+            case SNES_B_BTN:
+               p1_tank_num = 1;
+               break;
+            case SNES_X_BTN:
+               p1_tank_num = 2;
+               break;
+            case SNES_Y_BTN:
+               p1_tank_num = 3;
+               break;
+            default:
+               p1_tank_num = TANK_NOT_SELECTED;
+               break;
+         }
+      }
+      else
+      {
+         switch(p1_tank_num)
+         {
+            case 0:
+                p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 1:
+               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 2:
+               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 3:
+               p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            default:
+               break;
+         }
+      }
+      
+      if(p2_tank_num == TANK_NOT_SELECTED)
+      {
+         controller_data2 = snesData(SNES_P2);
+         switch(controller_data2)
+         {
+            case SNES_A_BTN:
+               p2_tank_num = 0;
+               break;
+            case SNES_B_BTN:
+               p2_tank_num = 1;
+               break;
+            case SNES_X_BTN:
+               p2_tank_num = 2;
+               break;
+            case SNES_Y_BTN:
+               p2_tank_num = 3;
+               break;
+            default:
+               p2_tank_num = TANK_NOT_SELECTED;
+               break;
+         }
+      }
+      else
+      {
+         switch(p2_tank_num)
+         {
+            case 0:
+               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 1:
+               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 2:
+               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            case 3:
+               p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+               break;
+            default:
+               break;
+         }
+      }
+      _delay_ms(17);
+   }
+   // Print out player selections again
+   vSpriteDelete(p1);
+   vSpriteDelete(p2);
+   switch(p1_tank_num)
+   {
+      case 0:
+         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+         break;
+      case 1:
+         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+         break;
+      case 2:
+         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+         break;
+      case 3:
+         p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+         break;
+      default:
+         break;
+   }
+   switch(p2_tank_num)
+   {
+      case 0:
+         p2 = xSpriteCreate("p2.png",((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
+         break;
+      case 1:
+         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
+         break;
+      case 2:
+         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
+         break;
+      case 3:
+         p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)/8)*SCREEN_W, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 1);
+         break;
+      default:
+      break;
+   }
+   _delay_ms(1000);
+   vSpriteDelete(p1);
+   vSpriteDelete(p2);
+   vSpriteDelete(select_screen);
 }
 																															
