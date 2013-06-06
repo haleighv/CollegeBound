@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.0" orientation="orthogonal" width="30" height="20" tilewidth="32" tileheight="32">
+ <tileset firstgid="1" source="../../../../../../Program Files/Tiled/examples/desert.tsx"/>
+ <layer name="Tile Layer 1" width="30" height="20">
+  <data encoding="base64" compression="zlib">
+   eJyllsGOgzAMRHOgtAcCnCgn/v8zN5Ww9HY6Tql6GKkJtiexx06PUsrRMDcsDeu55t4LU8MD37aGJ3CD7SJ+d/E9DMfaib0nvvQfkjPoucdz7XgzjOYO9I/zKr/mMmxvyAvjjth7oZ732vG9mnttwk3eijXruXT2M04Xn3fnmbL4jN2r83zaftLBJtyOd0h8HbYvbKkB8saZMm2xzllfXOGdknrswuN0on1xNTfUmYuRadTVQvXu8qH96urZ06jWwtlqDsNmBa/WM2x07mjPR5+Hrc5Ld64Jv2cTU200H8x11le72Cq0D5yd6tvN1KhxLe/3cDO7N985B0IXnCPZzFIdsq4B1d9sfD/NB/cmrsLLHhpMLn/tUXJRg/rmZbNcdelmVoZa/us94pA3u1v2HuvMuQr2h+bdvV/UjuqK/NRs9p+Duf0DXekrsg==
+  </data>
+ </layer>
+</map>
