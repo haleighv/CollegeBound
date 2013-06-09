@@ -90,6 +90,7 @@ typedef struct tank_info{
 #define DEAD_ZONE_OVER_2 120
 
 #define FRAME_DELAY_MS  10
+#define GAME_RESET_DELAY_MS  2000
 #define CONTROLLER_DELAY_MS 100
 
 #define WALL_SIZE 50
@@ -101,13 +102,16 @@ typedef struct tank_info{
 
 #define TANK_SIZE 60
 #define TANK_OFFSET TANK_SIZE / 2.0
+#define NUM_TANK_SPRITES 4
+
 
 #define BULLET_SIZE 20
 #define BULLET_DELAY_MS 1000
 #define BULLET_VEL 8.0
 
 #define TANK_SEL_BANNER_SIZE 100
-#define TANK_NOT_SELECTED 4
+#define TANK_NOT_SELECTED 0
+#define TANK_SELECTED 1
 
 
 // Tank Parameters
@@ -203,7 +207,7 @@ void inputTask(void *vParam) {
       if(controller_data & SNES_B_BTN)
          tank_stuff->tank->accel = TANK_ACCEL;
       else if(controller_data & SNES_A_BTN)
-         tank_stuff->tank->accel = -TANK_ACCEL/2;   
+         tank_stuff->tank->accel = -(TANK_ACCEL/2.0);   
       else {
          tank_stuff->tank->accel = 0;
          tank_stuff->tank->vel.x = tank_stuff->tank->vel.y = 0;
@@ -353,7 +357,7 @@ void updateTask(void *vParam) {
  *
  * param vParam: This parameter is not used.
  *----------------------------------------------------------------------------*/
-void drawTask(void *vParam) {
+void drawTask(void *vParam) {   
 	object *objIter, *objPrev;
    wall *wallIter, *wallPrev;
 	xSpriteHandle hit, handle;
@@ -533,59 +537,39 @@ void drawTask(void *vParam) {
          }
       }
 
-      switch(game_status)
-      {
-         case PLAYER_ONE_WIN:
-            vTaskDelete(update1TaskHandle);
-            vTaskResume(update2TaskHandle);
-            vTaskDelete(bullet1TaskHandle);
-            vTaskDelete(bullet2TaskHandle);
-            vTaskDelete(input1TaskHandle);
-            vTaskDelete(input2TaskHandle);
-            
-            handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
-            
-            vTaskDelay(3000 / portTICK_RATE_MS);
-            
-            vSpriteDelete(handle);
-            reset();
-            init();            
-            
-            xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 6, &input1TaskHandle);
-            xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 6, &input2TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 2, &bullet1TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 2, &bullet2TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
-            game_status = IN_PLAY;
-            break;
-         case PLAYER_TWO_WIN: 
-            vTaskDelete(update1TaskHandle);
-            vTaskDelete(update2TaskHandle);
-            vTaskDelete(bullet1TaskHandle);
-            vTaskDelete(bullet2TaskHandle);
-            vTaskDelete(input1TaskHandle);
-            vTaskDelete(input2TaskHandle);
-            
-            handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
-            
-            vTaskDelay(3000 / portTICK_RATE_MS);
 
-            vSpriteDelete(handle);
-            reset();
-            init();
-
-            xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 6, &input1TaskHandle);
-            xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 6, &input2TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 2, &bullet1TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 2, &bullet2TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
-            game_status = IN_PLAY;
-            break;
-         default:
-            break;
+      if((game_status == PLAYER_ONE_WIN)||(game_status == PLAYER_TWO_WIN)){
+         vTaskDelete(update1TaskHandle);
+         vTaskDelete(update2TaskHandle);
+         vTaskDelete(bullet1TaskHandle);
+         vTaskDelete(bullet2TaskHandle);
+         vTaskDelete(input1TaskHandle);
+         vTaskDelete(input2TaskHandle);
+         switch(game_status){
+            case PLAYER_ONE_WIN:
+               handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               break;
+            case PLAYER_TWO_WIN:
+               handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               break;
+            default:
+               break;
+         }
+         vTaskDelay(GAME_RESET_DELAY_MS / portTICK_RATE_MS);
+         
+         vSpriteDelete(handle);
+         reset();
+         init();
+         
+         xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 4, &input1TaskHandle);
+         xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 4, &input2TaskHandle);
+         xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 1, &bullet1TaskHandle);
+         xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 1, &bullet2TaskHandle);
+         xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 3, &update1TaskHandle);
+         xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 3, &update2TaskHandle);
+         game_status = IN_PLAY;
       }
+      
 		
 		xSemaphoreGive(usartMutex);
 		vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
@@ -608,7 +592,6 @@ int main(void) {
       .fire_button = &fire_button2,
       .number = 2};
    
-   
    xSnesMutex = xSemaphoreCreateMutex();
 	usartMutex = xSemaphoreCreateMutex();
 	
@@ -618,10 +601,10 @@ int main(void) {
 
 	xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 4, &input1TaskHandle);
 	xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 4, &input2TaskHandle);
-	xTaskCreate(bulletTask, (signed char *) "b1", 250, (void*)&tank_info1, 1, &bullet1TaskHandle);
-   xTaskCreate(bulletTask, (signed char *) "b2", 250, (void*)&tank_info2, 1, &bullet2TaskHandle);
-	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
+	xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 1, &bullet1TaskHandle);
+   xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 1, &bullet2TaskHandle);
+	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 3, &update1TaskHandle);
+	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 3, &update2TaskHandle);
 	xTaskCreate(drawTask, (signed char *) "d", 800, NULL, 2, NULL);
 	xTaskCreate(USART_Write_Task, (signed char *) "w", 500, NULL, 5, &uartTaskHandle);
 	
@@ -937,9 +920,12 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num,
 void startup(void) {
    p1_tank_num = TANK_NOT_SELECTED;
    p2_tank_num = TANK_NOT_SELECTED;
+   uint8_t p1_sel = TANK_NOT_SELECTED, p2_sel = TANK_NOT_SELECTED;
+   
    uint16_t controller_data1 = 0;
    uint16_t controller_data2 = 0;
    uint8_t press_start_loop_count = 0;
+   
    xSpriteHandle p1, p2;
    xSpriteHandle press_start;
    // Print opening start screen
@@ -973,29 +959,46 @@ void startup(void) {
    controller_data1 = 0;
    controller_data2 = 0;
    
+   p1_tank_num = p2_tank_num = 0;
+   p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+   p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
    // get a valid tank selection from both controllers
-   while((p1_tank_num == TANK_NOT_SELECTED) || (p2_tank_num == TANK_NOT_SELECTED)) {
-      if(p1_tank_num == TANK_NOT_SELECTED) {
+   while((p1_sel == TANK_NOT_SELECTED) || (p2_sel == TANK_NOT_SELECTED)) {
+      
+      
+      if(p1_sel == TANK_NOT_SELECTED) {
          controller_data1 = snesData(SNES_P1);
          switch(controller_data1) {
+            case SNES_RIGHT_BTN:
+               p1_tank_num++;
+               if(p1_tank_num > 3)
+                  p1_tank_num = 0;
+               break;
+            case SNES_LEFT_BTN:
+               if(p1_tank_num <= 0)
+                  p1_tank_num = 3;
+               else
+                  p1_tank_num--;
+               break;
             case SNES_A_BTN:
-               p1_tank_num = 0;
+               p1_sel = TANK_SELECTED;
                break;
-            case SNES_B_BTN:
-               p1_tank_num = 1;
-               break;
-            case SNES_X_BTN:
-               p1_tank_num = 2;
-               break;
-            case SNES_Y_BTN:
-               p1_tank_num = 3;
-               break;
+            //case SNES_B_BTN:
+               //p1_tank_num = 1;
+               //break;
+            //case SNES_X_BTN:
+               //p1_tank_num = 2;
+               //break;
+            //case SNES_Y_BTN:
+               //p1_tank_num = 3;
+               //break;
             default:
-               p1_tank_num = TANK_NOT_SELECTED;
+               //p1_tank_num = TANK_NOT_SELECTED;
                break;
          }
          
-         if(p1_tank_num != TANK_NOT_SELECTED) {
+         if((controller_data1 & SNES_RIGHT_BTN)||(controller_data1 & SNES_LEFT_BTN)) {
+            vSpriteDelete(p1);
             switch(p1_tank_num) {
                case 0:
                   p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
@@ -1010,32 +1013,50 @@ void startup(void) {
                   p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
                   break;
                default:
+                  p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
                   break;
             }
          }
       }
 
       
-      if(p2_tank_num == TANK_NOT_SELECTED) {
+      if(p2_sel == TANK_NOT_SELECTED) {
          controller_data2 = snesData(SNES_P2);
          switch(controller_data2) {
+            case SNES_RIGHT_BTN:
+               p2_tank_num++;
+               if(p2_tank_num > 3)
+                  p2_tank_num = 0;
+               break;
+            case SNES_LEFT_BTN:
+               if(p2_tank_num <= 0)
+                  p2_tank_num = 3;
+               else
+                  p2_tank_num--;
+               break;
             case SNES_A_BTN:
-               p2_tank_num = 0;
+               p2_sel = TANK_SELECTED;
                break;
-            case SNES_B_BTN:
-               p2_tank_num = 1;
-               break;
-            case SNES_X_BTN:
-               p2_tank_num = 2;
-               break;
-            case SNES_Y_BTN:
-               p2_tank_num = 3;
-               break;
+            
+            
+            //case SNES_A_BTN:
+               //p2_tank_num = 0;
+               //break;
+            //case SNES_B_BTN:
+               //p2_tank_num = 1;
+               //break;
+            //case SNES_X_BTN:
+               //p2_tank_num = 2;
+               //break;
+            //case SNES_Y_BTN:
+               //p2_tank_num = 3;
+               //break;
             default:
-               p2_tank_num = TANK_NOT_SELECTED;
+               //p2_tank_num = TANK_NOT_SELECTED;
                break;
          }
-         if(p2_tank_num != TANK_NOT_SELECTED) {
+        if((controller_data2 & SNES_RIGHT_BTN)||(controller_data2 & SNES_LEFT_BTN)) {
+            vSpriteDelete(p2);
             switch(p2_tank_num) {
                case 0:
                   p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
@@ -1050,12 +1071,13 @@ void startup(void) {
                   p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
                   break;
                default:
+                  p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
                   break;
             }
          }         
       }
       
-      _delay_ms(17);
+      _delay_ms(150);
    }
    _delay_ms(1000);
    vSpriteDelete(p1);
