@@ -21,7 +21,7 @@ void snesInit(uint8_t num_players)
 	//xSnesDataQueue = xQueueCreate( 1, sizeof(uint16_t));
 	
 	// Configure Port for player1
-	if(num_players == 1)
+	if(num_players == SNES_P1)
 	{
 		//data = input; clock = output; latch = output
 		SNES_DDR_P1 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
@@ -29,16 +29,22 @@ void snesInit(uint8_t num_players)
 	}
 	
 	// Configure Port for player2 and player 1
-	else if(num_players == 2)
-	{
-		//data = input; clock = output; latch = output
-		SNES_DDR_P1 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
-		SNES_PORT_P1 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
-		
+	else if(num_players == SNES_P2)
+	{		
 		//data = input; clock = output; latch = output
 		SNES_DDR_P2 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
 		SNES_PORT_P2 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
 	}
+   // Configure Port for player2 and player 1
+   else if(num_players == SNES_2P_MODE)
+   {
+      //data = input; clock = output; latch = output
+      SNES_DDR_P1 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
+      SNES_PORT_P1 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+      //data = input; clock = output; latch = output
+      SNES_DDR_P2 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
+      SNES_PORT_P2 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
+   }
 
 
 

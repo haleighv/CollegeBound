@@ -43,6 +43,7 @@
 #define CLK          1        //PB1
 #define DATA         2        //PB2
 
+// Trial and error vals b/c us delays were not accurate after the scheduler ran
 #define LATCH_TIME   191//12       //time [us] for the latch signal
 #define CLK_TIME     84//5.6      //time [us] for 1/2 the clock (50% duty)
 #define NUM_BTNS     12       //the total number of buttons on the controller

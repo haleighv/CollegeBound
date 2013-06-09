@@ -57,7 +57,7 @@ typedef struct {
 	float y;
 } point;
 
-//object is used to represent the tank, bullets 
+//object is used to represent the ship, bullets, and asteroids 
 typedef struct object_s {
 	xSpriteHandle handle;
 	point pos;
@@ -70,7 +70,7 @@ typedef struct object_s {
 	struct object_s *next;
 } object;
 
-//struct used to represent the walls
+//object is used to represent the ship, bullets, and asteroids
 typedef struct wall {
    xSpriteHandle handle;
    point topLeft, botRight;
@@ -78,13 +78,6 @@ typedef struct wall {
    struct wall *next;
 } wall;
 
-// struct used to track info on a tank
-typedef struct tank_info{
-   object* tank; 
-   object** bullets;
-   uint8_t* fire_button;
-   uint8_t number;    
-}tank_info;
 
 #define DEG_TO_RAD M_PI / 180.0
 
@@ -94,7 +87,8 @@ typedef struct tank_info{
 #define DEAD_ZONE_OVER_2 120
 
 #define FRAME_DELAY_MS  10
-#define CONTROLLER_DELAY_MS 100
+#define BULLET_DELAY_MS 500
+#define BULLET_LIFE_MS  600
 
 #define WALL_SIZE 50
 #define WALL_WIDTH 19.2
@@ -103,22 +97,19 @@ typedef struct tank_info{
 #define WALL_BOUNCE 5
 #define WALL_EDGE WALL_SIZE / 2.2
 
-#define TANK_SIZE 60
-#define TANK_OFFSET TANK_SIZE / 2.0
-
+#define SHIP_SIZE 60
+#define SHIP_OFFSET SHIP_SIZE / 2.0
 #define BULLET_SIZE 20
-#define BULLET_DELAY_MS 500
-#define BULLET_LIFE_MS  600
-#define BULLET_VEL 8.0
 
 #define TANK_SEL_BANNER_SIZE 100
 #define TANK_NOT_SELECTED 4
 
+#define BULLET_VEL 8.0
 
 // Tank Parameters
-#define TANK_MAX_VEL 3.0
-#define TANK_ACCEL 0.05
-#define TANK_AVEL  1.0
+#define SHIP_MAX_VEL 3.0
+#define SHIP_ACCEL 0.05
+#define SHIP_AVEL  1.0
 
 #define BACKGROUND_AVEL 0.01
 
@@ -128,47 +119,38 @@ typedef struct tank_info{
 #define PLAYER_TWO_WIN 2
 
 
-static xTaskHandle input1TaskHandle, input2TaskHandle;
-static xTaskHandle bullet1TaskHandle, bullet2TaskHandle;
-static xTaskHandle update1TaskHandle, update2TaskHandle;
+static xTaskHandle inputTaskHandle;
+static xTaskHandle bulletTaskHandle;
+static xTaskHandle updateTaskHandle;
 static xTaskHandle uartTaskHandle;
 
 //Mutex used synchronize usart usage
 static xSemaphoreHandle usartMutex;
 
 static xSemaphoreHandle xSnesMutex;
-
-
-// variables used to track the selected tank sprite for each player
-uint8_t p1_tank_num, p2_tank_num;
-
-
-static wall *walls = NULL;
-static wall *borders = NULL;
-
-static object tank1;
-static object tank2;
-
-//linked lists for bullets
-static object *bullets_tank1 = NULL;
-static object *bullets_tank2 = NULL;
+static object ship1;
+static object ship2;
 
 uint8_t fire_button1 = 0;
 uint8_t fire_button2 = 0;
 
-// Initialize tank_info for all players
-static tank_info tank_info1;
-static tank_info tank_info2;
+
+uint8_t p1_tank_num, p2_tank_num;
+//linked lists for bullets
+static object *bullets_ship1 = NULL;
+static object *bullets_ship2 = NULL;
+static wall *walls = NULL;
+static wall *borders = NULL;
 
 static xGroupHandle wallGroup;
-static xGroupHandle tankGroup1;
-static xGroupHandle tankGroup2;
+static xGroupHandle shipGroup1;
+static xGroupHandle shipGroup2;
 static xSpriteHandle background;
 
 void init(void);
 void reset(void);
 wall *createWall(char * image, float x, float y, int16_t angle, wall *nxt, float height, float width);
-object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num, int16_t angle, object *nxt);
+object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num, int16_t angle, object *nxt);
 void startup(void);
 
 /*------------------------------------------------------------------------------
@@ -182,42 +164,70 @@ void startup(void);
  *----------------------------------------------------------------------------*/
 void inputTask(void *vParam) {
     /* Note:
-     * tank.accel stores if the tank is moving
-     * tank.a_vel stores which direction the tank is moving in
+     * ship.accel stores if the ship is moving
+     * ship.a_vel stores which direction the ship is moving in
      */
+	//vTaskDelay(1000/portTICK_RATE_MS);
+	
+	// variable to hold ticks value of last task run
+	portTickType xLastWakeTime;
+	
+	// Initialize the xLastWakeTime variable with the current time.
+	xLastWakeTime = xTaskGetTickCount();
+	
+	snesInit(SNES_2P_MODE); 
+	//snesInit(player_num);
+	
+    while (1) {
+		//xQueueReceive( xSnesDataQueue, &controller_data, portMAX_DELAY );
+      //xSemaphoreTake(xSnesMutex, portMAX_DELAY);
+		//controller_data = snesData(player_num);
+		
+		 
+      DDRF = 0xFF;
 
-	tank_info* tank_stuff = (tank_info*)vParam; 
+      uint16_t controller_data1, controller_data2;
 
-	snesInit(tank_stuff->number); 
-   
-	DDRF = 0xFF;
+      controller_data1 = snesData(SNES_P1);
+      controller_data2 = snesData(SNES_P2);
+      //PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
 
-	uint16_t controller_data;
-   while (1) {
-      xSemaphoreTake(xSnesMutex, portMAX_DELAY);
-      
-      controller_data = snesData(tank_stuff->number);
-
-      if(controller_data & SNES_LEFT_BTN)
-         tank_stuff->tank->a_vel = +TANK_AVEL;
-      else if(controller_data & SNES_RIGHT_BTN)
-         tank_stuff->tank->a_vel = -TANK_AVEL;
+      if(controller_data1 & SNES_LEFT_BTN)
+         ship1.a_vel = +SHIP_AVEL;
+      else if(controller_data1 & SNES_RIGHT_BTN)
+         ship1.a_vel = -SHIP_AVEL;
       else
-         tank_stuff->tank->a_vel = 0;
+         ship1.a_vel = 0;
    
-      if(controller_data & SNES_B_BTN)
-         tank_stuff->tank->accel = TANK_ACCEL;
+      if(controller_data1 & SNES_B_BTN)
+         ship1.accel = SHIP_ACCEL;
       else {
-         tank_stuff->tank->accel = 0;
-         tank_stuff->tank->vel.x = tank_stuff->tank->vel.y = 0;
+         ship1.accel =0;
+         ship1.vel.x = ship1.vel.y = 0;
       }      
    
-      if(controller_data & SNES_Y_BTN)
-          *(tank_stuff->fire_button) = 1;
+      if(controller_data1 & SNES_Y_BTN)
+         fire_button1 = 1;
 
-      xSemaphoreGive(xSnesMutex);
 
-      vTaskDelay(CONTROLLER_DELAY_MS/portTICK_RATE_MS);
+      if(controller_data2 & SNES_LEFT_BTN)
+         ship2.a_vel = +SHIP_AVEL;
+      else if(controller_data2 & SNES_RIGHT_BTN)
+         ship2.a_vel = -SHIP_AVEL;
+      else
+         ship2.a_vel = 0;
+      
+      if(controller_data2 & SNES_B_BTN)
+         ship2.accel = SHIP_ACCEL;
+      else {
+         ship2.vel.x = ship2.vel.y = 0;
+         ship2.accel = 0;
+      }            
+            
+      if(controller_data2 & SNES_Y_BTN)
+         fire_button2 = 1;
+      //xSemaphoreGive(xSnesMutex);
+      vTaskDelayUntil( &xLastWakeTime, 100/portTICK_RATE_MS);
    }
 }
 
@@ -229,31 +239,52 @@ void inputTask(void *vParam) {
  *  second to regulate the fire rate.  If a bullet is not fired, the task
  *  blocks for a frame delay (FRAME_DELAY_MS)
  *
- * param vParam: This parameter the tank object whose bullets should be made.
+ * param vParam: This parameter is not used.
  *----------------------------------------------------------------------------*/
 void bulletTask(void *vParam) {
 	 /* Note:
-     * The tank heading is stored in tank.angle.
-     * The tank's position is stored in tank.pos.x and tank.pos.y
+     * The ship heading is stored in ship.angle.
+     * The ship's position is stored in ship.pos.x and ship.pos.y
+     *
+     * You will need to use the following code to add a new bullet:
+     * bullets = createBullet(x, y, vx, vy, bullets);
      */
-
-   tank_info* tank_stuff = (tank_info*)vParam;
-     
+	// variable to hold ticks value of last task run
+	//portTickType xLastWakeTime;
+   
+	// Initialize the xLastWakeTime variable with the current time.
+	//xLastWakeTime = xTaskGetTickCount();
+   uint8_t firebutton;
+   uint8_t tank_num = (uint8_t) *vParam; 
+   if(tank_num == 2)
+      firebutton =
    while (1) {
-      // Check if the fire button has been pressed
-      if(*(tank_stuff->fire_button)) {
+      if(fire_button1 || fire_button2) {
          xSemaphoreTake(usartMutex, portMAX_DELAY);
-         *(tank_stuff->fire_button) = 0;
-         //Make a new bullet and add to linked list
-         *(tank_stuff->bullets) = createBullet(
-            tank_stuff->tank->pos.x,
-            tank_stuff->tank->pos.y,
-            -sin(tank_stuff->tank->angle*DEG_TO_RAD)*BULLET_VEL,
-            -cos(tank_stuff->tank->angle*DEG_TO_RAD)*BULLET_VEL,
-            tank_stuff->number,
-            tank_stuff->tank->angle,
-            *(tank_stuff->bullets));
-
+         if(fire_button1) {
+            fire_button1 = 0;
+            //Make a new bullet and add to linked list
+            bullets_ship1 = createBullet(
+               ship1.pos.x,
+               ship1.pos.y,
+               -sin(ship1.angle*DEG_TO_RAD)*BULLET_VEL,
+               -cos(ship1.angle*DEG_TO_RAD)*BULLET_VEL,
+               SNES_P1,
+               ship1.angle,
+               bullets_ship1);
+         }
+         if(fire_button2) {
+            fire_button2 = 0;
+            //Make a new bullet and add to linked list
+            bullets_ship2 = createBullet(
+               ship2.pos.x,
+               ship2.pos.y,
+               -sin(ship2.angle*DEG_TO_RAD)*BULLET_VEL,
+               -cos(ship2.angle*DEG_TO_RAD)*BULLET_VEL,
+               SNES_P2,
+               ship2.angle,
+               bullets_ship2);
+         }
          xSemaphoreGive(usartMutex);
          vTaskDelay(BULLET_DELAY_MS/portTICK_RATE_MS);
       }
@@ -267,7 +298,7 @@ void bulletTask(void *vParam) {
  *
  * Description: This task observes the currently stored velocities for every
  *  game object and updates their position and rotation accordingly. It also
- *  updates the tank's velocities based on its current acceleration and angle.
+ *  updates the ship's velocities based on its current acceleration and angle.
  *  If a bullet has been in flight for too long, this task will delete it. This
  *  task runs every 10 milliseconds.
  *
@@ -276,120 +307,117 @@ void bulletTask(void *vParam) {
 void updateTask(void *vParam) {
 	float vel;
 	object *objIter, *objPrev;
-   tank_info* tank_stuff = (tank_info*)vParam;
-   
 	for (;;) {
-		// spin tank1
-		tank_stuff->tank->angle += tank_stuff->tank->a_vel;
-		if (tank_stuff->tank->angle >= 360)
-         tank_stuff->tank->angle -= 360;
-		else if (tank_stuff->tank->angle < 0)
-		   tank_stuff->tank->angle += 360;
+		// spin ship1
+		ship1.angle += ship1.a_vel;
+		if (ship1.angle >= 360)
+         ship1.angle -= 360;
+		else if (ship1.angle < 0)
+		   ship1.angle += 360;
          
-      //// spin tank2
-      //tank2.angle += tank2->a_vel;
-      //if (tank2.angle >= 360)
-         //tank2.angle -= 360;
-      //else if (tank2.angle < 0)
-         //tank2.angle += 360;     
+      // spin ship2
+      ship2.angle += ship2.a_vel;
+      if (ship2.angle >= 360)
+      ship2.angle -= 360;
+      else if (ship2.angle < 0)
+      ship2.angle += 360;     
 
-		// move tank1
-		tank_stuff->tank->vel.x += tank_stuff->tank->accel * -sin(tank_stuff->tank->angle * DEG_TO_RAD);
-		tank_stuff->tank->vel.y += tank_stuff->tank->accel * -cos(tank_stuff->tank->angle * DEG_TO_RAD);
-		vel = tank_stuff->tank->vel.x * tank_stuff->tank->vel.x + tank_stuff->tank->vel.y * tank_stuff->tank->vel.y;
-		if (vel > TANK_MAX_VEL) {
-			tank_stuff->tank->vel.x *= TANK_MAX_VEL / vel;
-			tank_stuff->tank->vel.y *= TANK_MAX_VEL / vel;
+		// move ship1
+		ship1.vel.x += ship1.accel * -sin(ship1.angle * DEG_TO_RAD);
+		ship1.vel.y += ship1.accel * -cos(ship1.angle * DEG_TO_RAD);
+		vel = ship1.vel.x * ship1.vel.x + ship1.vel.y * ship1.vel.y;
+		if (vel > SHIP_MAX_VEL) {
+			ship1.vel.x *= SHIP_MAX_VEL / vel;
+			ship1.vel.y *= SHIP_MAX_VEL / vel;
 		}
-		tank_stuff->tank->pos.x += tank_stuff->tank->vel.x;
-		tank_stuff->tank->pos.y += tank_stuff->tank->vel.y;
+		ship1.pos.x += ship1.vel.x;
+		ship1.pos.y += ship1.vel.y;
 		
-		if (tank_stuff->tank->pos.x - TANK_OFFSET < WALL_EDGE) {
-   		tank_stuff->tank->pos.x += WALL_BOUNCE;
-   		tank_stuff->tank->vel.x = 0;
-   		tank_stuff->tank->vel.y = 0;
-   		tank_stuff->tank->accel = 0;
-   		tank_stuff->tank->a_vel = 0;
-		} else if (tank_stuff->tank->pos.x + TANK_OFFSET > SCREEN_W - (WALL_EDGE)) {
-   		tank_stuff->tank->pos.x -= WALL_BOUNCE;
-   		tank_stuff->tank->vel.x = 0;
-   		tank_stuff->tank->vel.y = 0;
-   		tank_stuff->tank->accel = 0;
-   		tank_stuff->tank->a_vel = 0;
+		if (ship1.pos.x - SHIP_OFFSET < WALL_EDGE) {
+   		ship1.pos.x += WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
+		} else if (ship1.pos.x + SHIP_OFFSET > SCREEN_W - (WALL_EDGE)) {
+   		ship1.pos.x -= WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
 		}
-		if (tank_stuff->tank->pos.y - TANK_OFFSET < WALL_EDGE) {
-   		tank_stuff->tank->pos.y += WALL_BOUNCE;
-   		tank_stuff->tank->vel.x = 0;
-   		tank_stuff->tank->vel.y = 0;
-   		tank_stuff->tank->accel = 0;
-   		tank_stuff->tank->a_vel = 0;
-		} else if (tank_stuff->tank->pos.y + TANK_OFFSET > SCREEN_H - (WALL_EDGE)) {
-   		tank_stuff->tank->pos.y -= WALL_BOUNCE;
-   		tank_stuff->tank->vel.x = 0;
-   		tank_stuff->tank->vel.y = 0;
-   		tank_stuff->tank->accel = 0;
-   		tank_stuff->tank->a_vel = 0;
+		if (ship1.pos.y - SHIP_OFFSET < WALL_EDGE) {
+   		ship1.pos.y += WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
+		} else if (ship1.pos.y + SHIP_OFFSET > SCREEN_H - (WALL_EDGE)) {
+   		ship1.pos.y -= WALL_BOUNCE;
+   		ship1.vel.x = 0;
+   		ship1.vel.y = 0;
+   		ship1.accel = 0;
+   		ship1.a_vel = 0;
 		}
 
-      //// move tank2
-      //tank2.vel.x += tank2.accel * -sin(tank2.angle * DEG_TO_RAD);
-      //tank2.vel.y += tank2.accel * -cos(tank2.angle * DEG_TO_RAD);
-      //vel = tank2.vel.x * tank2.vel.x + tank2.vel.y * tank2.vel.y;
-      //if (vel > TANK_MAX_VEL) {
-         //tank2.vel.x *= TANK_MAX_VEL / vel;
-         //tank2.vel.y *= TANK_MAX_VEL / vel;
-      //}
-      //tank2.pos.x += tank2.vel.x;
-      //tank2.pos.y += tank2.vel.y;
-//
-      //if (tank2.pos.x - TANK_OFFSET < WALL_EDGE) {
-         //tank2.pos.x += WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //} else if (tank2.pos.x + TANK_OFFSET > SCREEN_W - (WALL_EDGE)) {
-         //tank2.pos.x -= WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //}
-      //if (tank2.pos.y - TANK_OFFSET < WALL_EDGE) {
-         //tank2.pos.y += WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //} else if (tank2.pos.y + TANK_OFFSET > SCREEN_H - (WALL_EDGE)) {
-         //tank2.pos.y -= WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //}
+      // move ship2
+      ship2.vel.x += ship2.accel * -sin(ship2.angle * DEG_TO_RAD);
+      ship2.vel.y += ship2.accel * -cos(ship2.angle * DEG_TO_RAD);
+      vel = ship2.vel.x * ship2.vel.x + ship2.vel.y * ship2.vel.y;
+      if (vel > SHIP_MAX_VEL) {
+         ship2.vel.x *= SHIP_MAX_VEL / vel;
+         ship2.vel.y *= SHIP_MAX_VEL / vel;
+      }
+      ship2.pos.x += ship2.vel.x;
+      ship2.pos.y += ship2.vel.y;
+
+      if (ship2.pos.x - SHIP_OFFSET < WALL_EDGE) {
+         ship2.pos.x += WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      } else if (ship2.pos.x + SHIP_OFFSET > SCREEN_W - (WALL_EDGE)) {
+         ship2.pos.x -= WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      }
+      if (ship2.pos.y - SHIP_OFFSET < WALL_EDGE) {
+         ship2.pos.y += WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      } else if (ship2.pos.y + SHIP_OFFSET > SCREEN_H - (WALL_EDGE)) {
+         ship2.pos.y -= WALL_BOUNCE;
+         ship2.vel.x = 0;
+         ship2.vel.y = 0;
+         ship2.accel = 0;
+         ship2.a_vel = 0;
+      }
       
-		// move bullets_tank1
+		// move bullets_ship1
 		objPrev = NULL;
-		objIter = *(tank_stuff->bullets);//bullets_tank1;
+		objIter = bullets_ship1;
 		while (objIter != NULL) {
 			// Kill bullet after a while
 			objIter->life += FRAME_DELAY_MS;
-			//if (objIter->life >= BULLET_LIFE_MS) {
-				//xSemaphoreTake(usartMutex, portMAX_DELAY);
-				//vSpriteDelete(objIter->handle);
-				//if (objPrev != NULL) {
-					//objPrev->next = objIter->next;
-					//vPortFree(objIter);
-					//objIter = objPrev->next;
-				//} else {
-					//*(tank_stuff->bullets) = objIter->next;
-					//vPortFree(objIter);
-					//objIter = *(tank_stuff->bullets);
-				//}
-				//xSemaphoreGive(usartMutex);
-			//} else 
-         {
+			if (objIter->life >= BULLET_LIFE_MS) {
+				xSemaphoreTake(usartMutex, portMAX_DELAY);
+				vSpriteDelete(objIter->handle);
+				if (objPrev != NULL) {
+					objPrev->next = objIter->next;
+					vPortFree(objIter);
+					objIter = objPrev->next;
+				} else {
+					bullets_ship1 = objIter->next;
+					vPortFree(objIter);
+					objIter = bullets_ship1;
+				}
+				xSemaphoreGive(usartMutex);
+			} else {
             objIter->pos.x += objIter->vel.x;
             objIter->pos.y += objIter->vel.y;
 
@@ -408,45 +436,45 @@ void updateTask(void *vParam) {
             objIter = objIter->next;
 			}			
 		}
-//
-      //// move bullets_tank2
-      //objPrev = NULL;
-      //objIter = bullets_tank2;
-      //while (objIter != NULL) {
-         //// Kill bullet after a while
-         //objIter->life += FRAME_DELAY_MS;
-         //if (objIter->life >= BULLET_LIFE_MS) {
-            //xSemaphoreTake(usartMutex, portMAX_DELAY);
-            //vSpriteDelete(objIter->handle);
-            //if (objPrev != NULL) {
-               //objPrev->next = objIter->next;
-               //vPortFree(objIter);
-               //objIter = objPrev->next;
-            //} else {
-               //bullets_tank2 = objIter->next;
-               //vPortFree(objIter);
-               //objIter = bullets_tank2;
-            //}
-            //xSemaphoreGive(usartMutex);
-         //} else {
-            //objIter->pos.x += objIter->vel.x;
-            //objIter->pos.y += objIter->vel.y;
-//
-            //if (objIter->pos.x < 0.0) {
-               //objIter->pos.x += SCREEN_W;
-            //} else if (objIter->pos.x > SCREEN_W) {
-               //objIter->pos.x -= SCREEN_W;
-            //}
-//
-            //if (objIter->pos.y < 0.0) {
-               //objIter->pos.y += SCREEN_H;
-            //} else if (objIter->pos.y > SCREEN_H) {
-               //objIter->pos.y -= SCREEN_H;
-            //}
-            //objPrev = objIter;
-            //objIter = objIter->next;
-         //}
-      //}
+
+      // move bullets_ship2
+      objPrev = NULL;
+      objIter = bullets_ship2;
+      while (objIter != NULL) {
+         // Kill bullet after a while
+         objIter->life += FRAME_DELAY_MS;
+         if (objIter->life >= BULLET_LIFE_MS) {
+            xSemaphoreTake(usartMutex, portMAX_DELAY);
+            vSpriteDelete(objIter->handle);
+            if (objPrev != NULL) {
+               objPrev->next = objIter->next;
+               vPortFree(objIter);
+               objIter = objPrev->next;
+            } else {
+               bullets_ship2 = objIter->next;
+               vPortFree(objIter);
+               objIter = bullets_ship2;
+            }
+            xSemaphoreGive(usartMutex);
+         } else {
+            objIter->pos.x += objIter->vel.x;
+            objIter->pos.y += objIter->vel.y;
+
+            if (objIter->pos.x < 0.0) {
+               objIter->pos.x += SCREEN_W;
+            } else if (objIter->pos.x > SCREEN_W) {
+               objIter->pos.x -= SCREEN_W;
+            }
+
+            if (objIter->pos.y < 0.0) {
+               objIter->pos.y += SCREEN_H;
+            } else if (objIter->pos.y > SCREEN_H) {
+               objIter->pos.y -= SCREEN_H;
+            }
+            objPrev = objIter;
+            objIter = objIter->next;
+         }
+      }
 		
 		vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
 	}
@@ -469,23 +497,17 @@ void drawTask(void *vParam) {
 	point topLeft, botRight;
 	uint8_t game_status = IN_PLAY;
 	
-	vTaskSuspend(update1TaskHandle);
-   vTaskSuspend(update2TaskHandle);
-	vTaskSuspend(bullet1TaskHandle);
-   vTaskSuspend(bullet2TaskHandle);
-	vTaskSuspend(input1TaskHandle);
-   vTaskSuspend(input2TaskHandle);
+	vTaskSuspend(updateTaskHandle);
+	vTaskSuspend(bulletTaskHandle);
+	vTaskSuspend(inputTaskHandle);
 	init();
-	vTaskResume(update1TaskHandle);
-   vTaskResume(update2TaskHandle);
-	vTaskResume(bullet1TaskHandle);
-   vTaskResume(bullet2TaskHandle);
-	vTaskResume(input1TaskHandle);
-	vTaskResume(input2TaskHandle);
-   
+	vTaskResume(updateTaskHandle);
+	vTaskResume(bulletTaskHandle);
+	vTaskResume(inputTaskHandle);
+	
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
-		if (uCollide(tank1.handle, wallGroup, &hit, 1) > 0) {
+		if (uCollide(ship1.handle, wallGroup, &hit, 1) > 0) {
    		wallPrev = NULL;
    		wallIter = walls;
    		while (wallIter != NULL) {
@@ -493,24 +515,24 @@ void drawTask(void *vParam) {
       		   topLeft = wallIter->topLeft;
       		   botRight = wallIter->botRight;
       		   //checks collision on x-axis
-      		   if (tank1.pos.x > topLeft.x && tank1.pos.x < botRight.x) {
-         		   if (abs(tank1.pos.y - topLeft.y) < abs(tank1.pos.y - botRight.y))
-         		      tank1.pos.y -= WALL_BOUNCE;
+      		   if (ship1.pos.x > topLeft.x && ship1.pos.x < botRight.x) {
+         		   if (abs(ship1.pos.y - topLeft.y) < abs(ship1.pos.y - botRight.y))
+         		      ship1.pos.y -= WALL_BOUNCE;
          		   else
-         		      tank1.pos.y += WALL_BOUNCE;
+         		      ship1.pos.y += WALL_BOUNCE;
       		   }
       		   
       		   //checks collision on y-axis
-      		   if (tank1.pos.y > topLeft.y && tank1.pos.y < botRight.x) {
-         		   if (abs(tank1.pos.x - topLeft.x) < abs(tank1.pos.x - botRight.x))
-         		      tank1.pos.x -= WALL_BOUNCE;
+      		   if (ship1.pos.y > topLeft.y && ship1.pos.y < botRight.x) {
+         		   if (abs(ship1.pos.x - topLeft.x) < abs(ship1.pos.x - botRight.x))
+         		      ship1.pos.x -= WALL_BOUNCE;
          		   else
-         		      tank1.pos.x += WALL_BOUNCE;
+         		      ship1.pos.x += WALL_BOUNCE;
                }               
-               tank1.vel.x = 0;
-               tank1.vel.y = 0;
-               tank1.accel = 0;
-               tank1.a_vel = 0;
+               ship1.vel.x = 0;
+               ship1.vel.y = 0;
+               ship1.accel = 0;
+               ship1.a_vel = 0;
                
                break;
             } else {
@@ -519,10 +541,10 @@ void drawTask(void *vParam) {
             }
          }
       }
-		vSpriteSetRotation(tank1.handle, (uint16_t)tank1.angle);
-		vSpriteSetPosition(tank1.handle, (uint16_t)tank1.pos.x, (uint16_t)tank1.pos.y);
+		vSpriteSetRotation(ship1.handle, (uint16_t)ship1.angle);
+		vSpriteSetPosition(ship1.handle, (uint16_t)ship1.pos.x, (uint16_t)ship1.pos.y);
       
-      if (uCollide(tank2.handle, wallGroup, &hit, 1) > 0) {
+      if (uCollide(ship2.handle, wallGroup, &hit, 1) > 0) {
          wallPrev = NULL;
          wallIter = walls;
          while (wallIter != NULL) {
@@ -530,25 +552,25 @@ void drawTask(void *vParam) {
                topLeft = wallIter->topLeft;
                botRight = wallIter->botRight;
                //checks collision on x-axis
-               if (tank2.pos.x > topLeft.x && tank2.pos.x < botRight.x) {
-                  if (abs(tank2.pos.y - topLeft.y) < abs(tank2.pos.y - botRight.y))
-                     tank2.pos.y -= WALL_BOUNCE;
+               if (ship2.pos.x > topLeft.x && ship2.pos.x < botRight.x) {
+                  if (abs(ship2.pos.y - topLeft.y) < abs(ship2.pos.y - botRight.y))
+                  ship2.pos.y -= WALL_BOUNCE;
                   else
-                     tank2.pos.y += WALL_BOUNCE;
+                  ship2.pos.y += WALL_BOUNCE;
                }
          
                //checks collision on y-axis
-               if (tank2.pos.y > topLeft.y && tank2.pos.y < botRight.x) {
-                  if (abs(tank2.pos.x - topLeft.x) < abs(tank2.pos.x - botRight.x))
-                  tank2.pos.x -= WALL_BOUNCE;
+               if (ship2.pos.y > topLeft.y && ship2.pos.y < botRight.x) {
+                  if (abs(ship2.pos.x - topLeft.x) < abs(ship2.pos.x - botRight.x))
+                  ship2.pos.x -= WALL_BOUNCE;
                   else
-                  tank2.pos.x += WALL_BOUNCE;
+                  ship2.pos.x += WALL_BOUNCE;
                }
          
-               tank2.vel.x = 0;
-               tank2.vel.y = 0;
-               tank2.accel = 0;
-               tank2.a_vel = 0;
+               ship2.vel.x = 0;
+               ship2.vel.y = 0;
+               ship2.accel = 0;
+               ship2.a_vel = 0;
          
                break;
             } else {
@@ -557,16 +579,16 @@ void drawTask(void *vParam) {
             }
          }
       }
-      vSpriteSetRotation(tank2.handle, (uint16_t)tank2.angle);
-      vSpriteSetPosition(tank2.handle, (uint16_t)tank2.pos.x, (uint16_t)tank2.pos.y);
+      vSpriteSetRotation(ship2.handle, (uint16_t)ship2.angle);
+      vSpriteSetPosition(ship2.handle, (uint16_t)ship2.pos.x, (uint16_t)ship2.pos.y);
       
-      // Check hits from tank1
+      // Check hits from ship1
 		objPrev = NULL;
-		objIter = bullets_tank1;
+		objIter = bullets_ship1;
 		while (objIter != NULL) {
    		vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
-         //// Check hits from tank1 on tank2
-         if (uCollide(objIter->handle, tankGroup2, &hit, 1) > 0) {
+         //// Check hits from ship1 on ship2
+         if (uCollide(objIter->handle, shipGroup2, &hit, 1) > 0) {
       		vSpriteDelete(objIter->handle);
       		
       		if (objPrev != NULL) {
@@ -575,9 +597,9 @@ void drawTask(void *vParam) {
          		objIter = objPrev->next;
       		}
             else {
-         		bullets_tank1 = objIter->next;
+         		bullets_ship1 = objIter->next;
          		vPortFree(objIter);
-         		objIter = bullets_tank1;
+         		objIter = bullets_ship1;
       		}
             game_status = PLAYER_ONE_WIN;
 		   }
@@ -590,9 +612,9 @@ void drawTask(void *vParam) {
                objIter = objPrev->next;
             }
             else {
-               bullets_tank1 = objIter->next;
+               bullets_ship1 = objIter->next;
                vPortFree(objIter);
-               objIter = bullets_tank1;
+               objIter = bullets_ship1;
             }
          }
          else {
@@ -601,13 +623,13 @@ void drawTask(void *vParam) {
          }
       }
 
-      // Check hits from tank2
+      // Check hits from ship2
       objPrev = NULL;
-      objIter = bullets_tank2;
+      objIter = bullets_ship2;
       while (objIter != NULL) {
          vSpriteSetPosition(objIter->handle, (uint16_t)objIter->pos.x, (uint16_t)objIter->pos.y);
-         //// Check hits from tank2 on tank1
-         if (uCollide(objIter->handle, tankGroup1, &hit, 1) > 0) {
+         //// Check hits from ship2 on ship1
+         if (uCollide(objIter->handle, shipGroup1, &hit, 1) > 0) {
             vSpriteDelete(objIter->handle);
       
             if (objPrev != NULL) {
@@ -616,9 +638,9 @@ void drawTask(void *vParam) {
                objIter = objPrev->next;
             }
             else {
-               bullets_tank2 = objIter->next;
+               bullets_ship2 = objIter->next;
                vPortFree(objIter);
-               objIter = bullets_tank2;
+               objIter = bullets_ship2;
             }
             game_status = PLAYER_TWO_WIN;
          }
@@ -631,9 +653,9 @@ void drawTask(void *vParam) {
                objIter = objPrev->next;
             }
             else {
-               bullets_tank2 = objIter->next;
+               bullets_ship2 = objIter->next;
                vPortFree(objIter);
-               objIter = bullets_tank2;
+               objIter = bullets_ship2;
             }
          }
          else {
@@ -645,12 +667,9 @@ void drawTask(void *vParam) {
       switch(game_status)
       {
          case PLAYER_ONE_WIN:
-            vTaskDelete(update1TaskHandle);
-            vTaskResume(update2TaskHandle);
-            vTaskDelete(bullet1TaskHandle);
-            vTaskDelete(bullet2TaskHandle);
-            vTaskDelete(input1TaskHandle);
-            vTaskDelete(input2TaskHandle);
+            vTaskDelete(updateTaskHandle);
+            vTaskDelete(bulletTaskHandle);
+            vTaskDelete(inputTaskHandle);
             
             handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
             
@@ -660,21 +679,15 @@ void drawTask(void *vParam) {
             reset();
             init();            
             
-            xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 6, &input1TaskHandle);
-            xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 6, &input2TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 2, &bullet1TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 2, &bullet2TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
+            xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+            xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+            xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
             game_status = IN_PLAY;
             break;
          case PLAYER_TWO_WIN: 
-            vTaskDelete(update1TaskHandle);
-            vTaskDelete(update2TaskHandle);
-            vTaskDelete(bullet1TaskHandle);
-            vTaskDelete(bullet2TaskHandle);
-            vTaskDelete(input1TaskHandle);
-            vTaskDelete(input2TaskHandle);
+            vTaskDelete(updateTaskHandle);
+            vTaskDelete(bulletTaskHandle);
+            vTaskDelete(inputTaskHandle);
             
             handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
             
@@ -684,12 +697,9 @@ void drawTask(void *vParam) {
             reset();
             init();
 
-            xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 6, &input1TaskHandle);
-            xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 6, &input2TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b1", 250, &tank_info1, 2, &bullet1TaskHandle);
-            xTaskCreate(bulletTask, (signed char *) "b2", 250, &tank_info2, 2, &bullet2TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-            xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
+            xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+            xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+            xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
             game_status = IN_PLAY;
             break;
          default:
@@ -705,19 +715,20 @@ int main(void) {
 	DDRB = 0x00;
 	TCCR2A = _BV(CS00);
 
-   tank_info1 = (tank_info){
-      .tank = &tank1,
-      .bullets = &bullets_tank1,
-      .fire_button = &fire_button1,
-      .number = 1};
-   
-   tank_info2 = (tank_info){
-      .tank = &tank2,
-      .bullets = &bullets_tank2,
-      .fire_button = &fire_button2,
-      .number = 2};
-   
-   
+   //----test code begin----//
+	//snesInit(SNES_2P_MODE);
+   //uint16_t controller_data1, controller_data2;      	
+   //DDRF = 0xFF;
+	//while(1)
+	//{
+		//controller_data1 = snesData(SNES_P1);
+      //controller_data2 = snesData(SNES_P2);
+      //PORTF = ((controller_data1) & 0xF0)|((controller_data2>>4) & 0x0F);
+		//_delay_ms(16);
+      //
+	//}
+   //----test code end----//
+
    xSnesMutex = xSemaphoreCreateMutex();
 	usartMutex = xSemaphoreCreateMutex();
 	
@@ -725,13 +736,10 @@ int main(void) {
 	
 	sei();
 
-	xTaskCreate(inputTask, (signed char *) "p1", 80, &tank_info1, 4, &input1TaskHandle);
-	xTaskCreate(inputTask, (signed char *) "p2", 80, &tank_info2, 4, &input2TaskHandle);
-	xTaskCreate(bulletTask, (signed char *) "b1", 250, (void*)&tank_info1, 1, &bullet1TaskHandle);
-   xTaskCreate(bulletTask, (signed char *) "b2", 250, (void*)&tank_info2, 1, &bullet2TaskHandle);
-	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info1, 4, &update1TaskHandle);
-	xTaskCreate(updateTask, (signed char *) "u", 200, &tank_info2, 4, &update2TaskHandle);
-	xTaskCreate(drawTask, (signed char *) "d", 800, NULL, 2, NULL);
+	xTaskCreate(inputTask, (signed char *) "p1", 80, NULL, 6, &inputTaskHandle);
+	xTaskCreate(bulletTask, (signed char *) "b", 250, NULL, 2, &bulletTaskHandle);
+	xTaskCreate(updateTask, (signed char *) "u", 200, NULL, 4, &updateTaskHandle);
+	xTaskCreate(drawTask, (signed char *) "d", 800, NULL, 3, NULL);
 	xTaskCreate(USART_Write_Task, (signed char *) "w", 500, NULL, 5, &uartTaskHandle);
 	
 	vTaskStartScheduler();
@@ -747,10 +755,10 @@ int main(void) {
  *  must be created before this function may be called.
  *----------------------------------------------------------------------------*/
 void init(void) {
-	bullets_tank1 = NULL;
-   bullets_tank2 = NULL;
-   tankGroup1 = ERROR_HANDLE;
-   tankGroup2 = ERROR_HANDLE;
+	bullets_ship1 = NULL;
+   bullets_ship2 = NULL;
+   shipGroup1 = ERROR_HANDLE;
+   shipGroup2 = ERROR_HANDLE;
 	
    // function to initialize program
    startup();
@@ -759,44 +767,44 @@ void init(void) {
 	srand(TCNT0);
 	
 	wallGroup = xGroupCreate();
-	tankGroup1 = xGroupCreate();
-   tankGroup2 = xGroupCreate();
+	shipGroup1 = xGroupCreate();
+   shipGroup2 = xGroupCreate();
 
-   // tank1 create
-	tank1.handle = xSpriteCreate(
+   // Ship1 create
+	ship1.handle = xSpriteCreate(
       tank_images[p1_tank_num], 
       SCREEN_W >> 2,
       SCREEN_H >> 1, 
       270, 
-      TANK_SIZE, 
-      TANK_SIZE, 
+      SHIP_SIZE, 
+      SHIP_SIZE, 
       1);
    
-	tank1.pos.x = SCREEN_W >> 2;
-	tank1.pos.y = SCREEN_H >> 1;
-	tank1.vel.x = 0;
-	tank1.vel.y = 0;
-	tank1.accel = 0;
-	tank1.angle = 270;
-	tank1.a_vel = 0;
+	ship1.pos.x = SCREEN_W >> 2;
+	ship1.pos.y = SCREEN_H >> 1;
+	ship1.vel.x = 0;
+	ship1.vel.y = 0;
+	ship1.accel = 0;
+	ship1.angle = 270;
+	ship1.a_vel = 0;
 
-   // tank2 create
-   tank2.handle = xSpriteCreate(
+   // Ship2 create
+   ship2.handle = xSpriteCreate(
       tank_images[p2_tank_num],
       SCREEN_W - (SCREEN_W >> 2),
       SCREEN_H >> 1,
       90,
-      TANK_SIZE,
-      TANK_SIZE,
+      SHIP_SIZE,
+      SHIP_SIZE,
       1);
    
-   tank2.pos.x = SCREEN_W - (SCREEN_W >> 2);
-   tank2.pos.y = SCREEN_H >> 1;
-   tank2.vel.x = 0;
-   tank2.vel.y = 0;
-   tank2.accel = 0;
-   tank2.angle = 90;
-   tank2.a_vel = 0;
+   ship2.pos.x = SCREEN_W - (SCREEN_W >> 2);
+   ship2.pos.y = SCREEN_H >> 1;
+   ship2.vel.x = 0;
+   ship2.vel.y = 0;
+   ship2.accel = 0;
+   ship2.angle = 90;
+   ship2.a_vel = 0;
 
    fire_button1 = 0;
    fire_button2 = 0;
@@ -883,10 +891,8 @@ void init(void) {
       WALL_BLOCK);
    fire_button2 = 0;   
 
-   vGroupAddSprite(tankGroup1, tank1.handle);
-   vGroupAddSprite(tankGroup2, tank2.handle);
-   
-   
+   vGroupAddSprite(shipGroup1, ship1.handle);
+   vGroupAddSprite(shipGroup2, ship2.handle);
 }
 
 /*------------------------------------------------------------------------------
@@ -928,27 +934,27 @@ void reset(void) {
       borders = nextWall;
    }
    
-   // removes bullets_tank1
-	while (bullets_tank1 != NULL) {
-   	vSpriteDelete(bullets_tank1->handle);
-   	nextObject = bullets_tank1->next;
-   	vPortFree(bullets_tank1);
-   	bullets_tank1 = nextObject;
+   // removes bullets_ship1
+	while (bullets_ship1 != NULL) {
+   	vSpriteDelete(bullets_ship1->handle);
+   	nextObject = bullets_ship1->next;
+   	vPortFree(bullets_ship1);
+   	bullets_ship1 = nextObject;
    }
-	// removes bullets_tank2
-	while (bullets_tank2 != NULL) {
-   	vSpriteDelete(bullets_tank2->handle);
-   	nextObject = bullets_tank2->next;
-   	vPortFree(bullets_tank2);
-   	bullets_tank2 = nextObject;
+	// removes bullets_ship2
+	while (bullets_ship2 != NULL) {
+   	vSpriteDelete(bullets_ship2->handle);
+   	nextObject = bullets_ship2->next;
+   	vPortFree(bullets_ship2);
+   	bullets_ship2 = nextObject;
 	}
    
-   //removes the tanks
-   vSpriteDelete(tank1.handle);
-   vSpriteDelete(tank2.handle);
+   //removes the ships
+   vSpriteDelete(ship1.handle);
+   vSpriteDelete(ship2.handle);
 
-   vGroupDelete(tankGroup1);
-   vGroupDelete(tankGroup2);
+   vGroupDelete(shipGroup1);
+   vGroupDelete(shipGroup2);
    //removes the background
    vSpriteDelete(background);
    
@@ -972,11 +978,11 @@ wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float 
    //set positions
    newWall->topLeft.x = 1 + x - ((width / 2) * WALL_SIZE);
    newWall->topLeft.y = 1 + y - ((height / 2) * WALL_SIZE);
-   //xSpriteCreate("bullet1.png", newWall->topLeft.x, newWall->topLeft.y, 0, tank_SIZE, tank_SIZE, 15);
+   //xSpriteCreate("bullet1.png", newWall->topLeft.x, newWall->topLeft.y, 0, SHIP_SIZE, SHIP_SIZE, 15);
    
    newWall->botRight.x = x + ((width / 2) * WALL_SIZE);
    newWall->botRight.y = y + ((height / 2) * WALL_SIZE);
-   //xSpriteCreate("bullet2.png", newWall->botRight.x, newWall->botRight.y, 0, tank_SIZE, tank_SIZE, 16);
+   //xSpriteCreate("bullet2.png", newWall->botRight.x, newWall->botRight.y, 0, SHIP_SIZE, SHIP_SIZE, 16);
    //set angle
    newWall->angle = angle;
    //link to asteroids list
@@ -1001,13 +1007,13 @@ wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float 
  * return: A pointer to a malloc'd bullet object. This pointer must be freed by
  *  the caller.
  *----------------------------------------------------------------------------*/
-object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num, int16_t angle, object *nxt) {
+object *createBullet(float x, float y, float velx, float vely, uint8_t ship_num, int16_t angle, object *nxt) {
 	//Create a new bullet object using a reentrant malloc() function
 	object *newBullet = pvPortMalloc(sizeof(object));
 	
 	//Setup the pointers in the linked list
 	//Create a new sprite using xSpriteCreate()
-   if(tank_num == 2) {
+   if(ship_num == 2) {
    	newBullet->handle = xSpriteCreate(
 	   bullet_images[p2_tank_num],			//reference to png filename
 	      x,                   //xPos

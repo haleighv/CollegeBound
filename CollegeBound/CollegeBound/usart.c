@@ -19,7 +19,7 @@
 #include "usart.h"
 
 xQueueHandle xUsartQueue;
-
+xSemaphoreHandle xQueueMutex;
 /************************************
 * Function: usart_init
 *
