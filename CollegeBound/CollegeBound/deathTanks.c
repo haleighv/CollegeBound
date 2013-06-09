@@ -56,7 +56,24 @@ const char* round_images[] = {
    "round1.png",
    "round2.png",
    "round3.png"};
-  
+
+// Array of health sprite image names
+const char* health_images1[] = {
+   "p1_health5.png",
+   "p1_health4.png",
+   "p1_health3.png",
+   "p1_health2.png",
+   "p1_health1.png",
+   "health0.png"};
+
+// Array of health sprite image names
+const char* health_images2[] = {
+   "p2_health5.png",
+   "p2_health4.png",
+   "p2_health3.png",
+   "p2_health2.png",
+   "p2_health1.png",
+   "health0.png"};
 //represents a point on the screen
 typedef struct {
 	float x;
@@ -72,7 +89,7 @@ typedef struct object_s {
 	int16_t angle;
 	int8_t a_vel;
 	uint8_t size;
-	uint16_t life;
+	uint8_t life;
 	struct object_s *next;
 } object;
 
@@ -118,6 +135,11 @@ typedef struct tank_info{
 #define BULLET_SIZE 20
 #define BULLET_DELAY_MS 1000
 #define BULLET_VEL 8.0
+#define MAX_LIFE 100
+#define DAMAGE 20
+#define HEALTH_BAR_SIZE 150 
+#define HEALTH_BAR_OFFSET_P1 20
+#define HEALTH_BAR_OFFSET_P2 SCREEN_W-5 
 
 #define TANK_SEL_BANNER_SIZE 100
 #define TANK_NOT_SELECTED 0
@@ -160,6 +182,7 @@ static object tank2;
 
 
 uint8_t p1_score = 0, p2_score = 0, game_round = 0;
+uint8_t tank1_health_img = 0, tank2_health_img = 0;
 //linked lists for bullets
 static object *bullets_tank1 = NULL;
 static object *bullets_tank2 = NULL;
@@ -175,6 +198,7 @@ static xGroupHandle wallGroup;
 static xGroupHandle tankGroup1;
 static xGroupHandle tankGroup2;
 static xSpriteHandle background;
+static xSpriteHandle health1, health2;
 
 void init(void);
 void reset(void);
@@ -475,7 +499,10 @@ void drawTask(void *vParam) {
          //// Check hits from tank1 on tank2
          if (uCollide(objIter->handle, tankGroup2, &hit, 1) > 0) {
       		vSpriteDelete(objIter->handle);
-      		
+      		tank2.life -= DAMAGE; 
+            tank2_health_img++;
+            vSpriteDelete(health2);
+            health2 = xSpriteCreate(health_images2[tank2_health_img],HEALTH_BAR_OFFSET_P2, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
       		if (objPrev != NULL) {
          		objPrev->next = objIter->next;
          		vPortFree(objIter);
@@ -486,7 +513,8 @@ void drawTask(void *vParam) {
          		vPortFree(objIter);
          		objIter = bullets_tank1;
       		}
-            game_status = PLAYER_ONE_WIN;
+            if(tank2.life <= 0)
+               game_status = PLAYER_ONE_WIN;
 		   }
          else if (uCollide(objIter->handle, wallGroup, &hit, 1) > 0) {
             vSpriteDelete(objIter->handle);
@@ -516,7 +544,11 @@ void drawTask(void *vParam) {
          //// Check hits from tank2 on tank1
          if (uCollide(objIter->handle, tankGroup1, &hit, 1) > 0) {
             vSpriteDelete(objIter->handle);
-      
+            tank1.life -= DAMAGE;
+            tank1_health_img++;
+            vSpriteDelete(health1);
+            health1 = xSpriteCreate(health_images1[tank1_health_img],HEALTH_BAR_OFFSET_P1, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
+            
             if (objPrev != NULL) {
                objPrev->next = objIter->next;
                vPortFree(objIter);
@@ -527,7 +559,8 @@ void drawTask(void *vParam) {
                vPortFree(objIter);
                objIter = bullets_tank2;
             }
-            game_status = PLAYER_TWO_WIN;
+            if(tank1.life <= 0)
+               game_status = PLAYER_TWO_WIN;
          }
          else if (uCollide(objIter->handle, wallGroup, &hit, 1) > 0) {
             vSpriteDelete(objIter->handle);
@@ -574,7 +607,7 @@ void drawTask(void *vParam) {
          vTaskDelay(GAME_RESET_DELAY_MS / portTICK_RATE_MS);
          
          vSpriteDelete(handle);
-         if(game_round >= NUM_ROUNDS)
+         if((game_round >= NUM_ROUNDS)||(p1_score == NUM_ROUNDS - 1)||(p2_score == NUM_ROUNDS - 1))
          {
             if(p1_score > p2_score)
                handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
@@ -584,10 +617,14 @@ void drawTask(void *vParam) {
             _delay_ms(GAME_RESET_DELAY_MS);
             vSpriteDelete(handle);
             p1_score = 0;
-            p1_score = 0;
+            p2_score = 0;
             game_round = 0;
             
+            
          }
+         vSpriteDelete(health1);
+         vSpriteDelete(health2);
+         tank1_health_img = tank2_health_img = 0;
          reset();
          init();
          
@@ -656,6 +693,9 @@ void init(void) {
    tankGroup1 = ERROR_HANDLE;
    tankGroup2 = ERROR_HANDLE;
 	xSpriteHandle number; 
+   
+   tank1.life =MAX_LIFE;
+   tank2.life =MAX_LIFE;
    // function to initialize program
    if(game_round == 0)
       startup();
@@ -705,6 +745,9 @@ void init(void) {
 
    fire_button1 = 0;
    fire_button2 = 0;
+   
+   health1 = xSpriteCreate(health_images1[tank1_health_img], HEALTH_BAR_OFFSET_P1, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
+   health2 = xSpriteCreate(health_images2[tank2_health_img],HEALTH_BAR_OFFSET_P2, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
    
    borders = createWall(
       "width_wall.bmp",
@@ -792,16 +835,16 @@ void init(void) {
    vGroupAddSprite(tankGroup2, tank2.handle);
    
    
-   number = xSpriteCreate(round_images[game_round], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+   number = xSpriteCreate(round_images[game_round], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 20);
    _delay_ms(1000);
    vSpriteDelete(number);
    for(uint8_t i = 0; i < 3; i++)
    {
-      number = xSpriteCreate(num_images[i], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+      number = xSpriteCreate(num_images[i], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 20);
       _delay_ms(750);
       vSpriteDelete(number);
    }   
-   number = xSpriteCreate("go.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+   number = xSpriteCreate("go.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 20);
    _delay_ms(1000);
    vSpriteDelete(number);   
 }
@@ -954,8 +997,6 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num,
    newBullet->vel.y = vely;
    //set size
    newBullet->size = BULLET_SIZE;
-   //set bullets life
-   newBullet->life = 0;
    //link to bullets list
    newBullet->next = nxt;
    //return pointer to the new bullet
@@ -979,8 +1020,9 @@ void startup(void) {
    // Initailize SNES Controllers
    snesInit(SNES_2P_MODE);
    // Wait for player1 to press start
-   while(!(controller_data1 & SNES_STRT_BTN)) {
+   while(!((controller_data1 & SNES_STRT_BTN)||(controller_data2 & SNES_STRT_BTN))) {
       controller_data1 = snesData(SNES_P1);
+      controller_data2 = snesData(SNES_P2);
       _delay_ms(17);
 
       if(press_start_loop_count++ == 30)
