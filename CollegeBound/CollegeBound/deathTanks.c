@@ -1,9 +1,9 @@
 /*******************************************************************************
-* File: asteroids.c
+* File: deathTanks.c
 *
 * Description: This FreeRTOS program uses the AVR graphics module to display
-*  and track the game state of the classic arcade game "Asteroids." When
-*  running on the AVR STK500, connect the switches to port B. SW7 turns left,
+*  and track the game state of a battle tanks rendition called "DeathTanks." When
+*  running on the AVR STK600, connect the switches to port B. SW7 turns left,
 *  SW6 turns right, SW1 accelerates forward, and SW0 shoots a bullet. Initially,
 *  five large asteroids are spawned around the player. As the player shoots the
 *  asteroids with bullets, they decompose into three smaller asteroids. When
@@ -13,7 +13,7 @@
 *  message. It is recommended to compile the FreeRTOS portion of this project
 *  with heap_2.c instead of heap_1.c since pvPortMalloc and vPortFree are used.
 *
-* Author(s): Doug Gallatin & Andrew Lehmer
+* Author(s): Doug Gallatin & Andrew Lehmer, Haleigh Vierra & Matt Cruse
 *
 * Revisions:
 * 5/8/12 MAC implemented spawn and create asteroid functions. 
@@ -32,25 +32,21 @@
 #include "usart.h"
 #include "snes.h"
 
+// Array of tank sprite image names
 const char* tank_images[] = {
    "tank0.png",
    "tank1.png",
    "tank2.png",
    "tank3.png"};
 
+// Array of bullet sprite image names
 const char* bullet_images[] = {
    "bullet0.png",
    "bullet1.png",
    "bullet2.png",
    "bullet3.png"};
 
-const char* bro_tank_images[] = {
-   "bro_tank0.png",
-   "bro_tank1.png",
-   "bro_tank2.png",
-   "bro_tank3.png"};
-   
-   
+  
 //represents a point on the screen
 typedef struct {
 	float x;
@@ -94,7 +90,7 @@ typedef struct tank_info{
 #define DEAD_ZONE_OVER_2 120
 
 #define FRAME_DELAY_MS  10
-#define CONTROLLER_DELAY_MS 150
+#define CONTROLLER_DELAY_MS 100
 
 #define WALL_SIZE 50
 #define WALL_WIDTH 19.2
@@ -107,8 +103,7 @@ typedef struct tank_info{
 #define TANK_OFFSET TANK_SIZE / 2.0
 
 #define BULLET_SIZE 20
-#define BULLET_DELAY_MS 750
-//#define BULLET_LIFE_MS  600
+#define BULLET_DELAY_MS 1000
 #define BULLET_VEL 8.0
 
 #define TANK_SEL_BANNER_SIZE 100
@@ -178,7 +173,7 @@ void startup(void);
  *  if the player should turn, accelerate, or both. This task never blocks, so
  *  it should run at the lowest priority above the idle task priority.
  *
- * param vParam: This parameter is not used.
+ * param vParam: This parameter is a pointer to a tank_info struct
  *----------------------------------------------------------------------------*/
 void inputTask(void *vParam) {
     /* Note:
@@ -207,6 +202,8 @@ void inputTask(void *vParam) {
    
       if(controller_data & SNES_B_BTN)
          tank_stuff->tank->accel = TANK_ACCEL;
+      else if(controller_data & SNES_A_BTN)
+         tank_stuff->tank->accel = -TANK_ACCEL/2;   
       else {
          tank_stuff->tank->accel = 0;
          tank_stuff->tank->vel.x = tank_stuff->tank->vel.y = 0;
@@ -243,7 +240,7 @@ void bulletTask(void *vParam) {
       // Check if the fire button has been pressed
       if(*(tank_stuff->fire_button)) {
          xSemaphoreTake(usartMutex, portMAX_DELAY);
-         *(tank_stuff->fire_button) = 0;
+         
          //Make a new bullet and add to linked list
          *(tank_stuff->bullets) = createBullet(
             tank_stuff->tank->pos.x,
@@ -253,9 +250,12 @@ void bulletTask(void *vParam) {
             tank_stuff->number,
             tank_stuff->tank->angle,
             *(tank_stuff->bullets));
-
+         
+         
          xSemaphoreGive(usartMutex);
          vTaskDelay(BULLET_DELAY_MS/portTICK_RATE_MS);
+         // Clear the fire button
+         *(tank_stuff->fire_button) = 0;
       }
       else
          vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
