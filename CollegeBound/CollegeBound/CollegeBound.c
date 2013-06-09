@@ -94,7 +94,7 @@ typedef struct tank_info{
 #define DEAD_ZONE_OVER_2 120
 
 #define FRAME_DELAY_MS  10
-#define CONTROLLER_DELAY_MS 100
+#define CONTROLLER_DELAY_MS 150
 
 #define WALL_SIZE 50
 #define WALL_WIDTH 19.2
@@ -107,8 +107,8 @@ typedef struct tank_info{
 #define TANK_OFFSET TANK_SIZE / 2.0
 
 #define BULLET_SIZE 20
-#define BULLET_DELAY_MS 500
-#define BULLET_LIFE_MS  600
+#define BULLET_DELAY_MS 750
+//#define BULLET_LIFE_MS  600
 #define BULLET_VEL 8.0
 
 #define TANK_SEL_BANNER_SIZE 100
@@ -271,7 +271,7 @@ void bulletTask(void *vParam) {
  *  If a bullet has been in flight for too long, this task will delete it. This
  *  task runs every 10 milliseconds.
  *
- * param vParam: This parameter is not used.
+ * param vParam: This parameter is a pointer to a tank_info struct.
  *----------------------------------------------------------------------------*/
 void updateTask(void *vParam) {
 	float vel;
@@ -279,31 +279,28 @@ void updateTask(void *vParam) {
    tank_info* tank_stuff = (tank_info*)vParam;
    
 	for (;;) {
-		// spin tank1
+		// spin tank
 		tank_stuff->tank->angle += tank_stuff->tank->a_vel;
 		if (tank_stuff->tank->angle >= 360)
          tank_stuff->tank->angle -= 360;
 		else if (tank_stuff->tank->angle < 0)
 		   tank_stuff->tank->angle += 360;
-         
-      //// spin tank2
-      //tank2.angle += tank2->a_vel;
-      //if (tank2.angle >= 360)
-         //tank2.angle -= 360;
-      //else if (tank2.angle < 0)
-         //tank2.angle += 360;     
+ 
 
-		// move tank1
+		// Update tank velocity
 		tank_stuff->tank->vel.x += tank_stuff->tank->accel * -sin(tank_stuff->tank->angle * DEG_TO_RAD);
 		tank_stuff->tank->vel.y += tank_stuff->tank->accel * -cos(tank_stuff->tank->angle * DEG_TO_RAD);
 		vel = tank_stuff->tank->vel.x * tank_stuff->tank->vel.x + tank_stuff->tank->vel.y * tank_stuff->tank->vel.y;
-		if (vel > TANK_MAX_VEL) {
+		// Check if tank is at max velocity
+      if (vel > TANK_MAX_VEL) {
 			tank_stuff->tank->vel.x *= TANK_MAX_VEL / vel;
 			tank_stuff->tank->vel.y *= TANK_MAX_VEL / vel;
 		}
+      // Update tank position
 		tank_stuff->tank->pos.x += tank_stuff->tank->vel.x;
 		tank_stuff->tank->pos.y += tank_stuff->tank->vel.y;
 		
+      // Check if tank is near boundries, and stop it if it hits a wall
 		if (tank_stuff->tank->pos.x - TANK_OFFSET < WALL_EDGE) {
    		tank_stuff->tank->pos.x += WALL_BOUNCE;
    		tank_stuff->tank->vel.x = 0;
@@ -331,122 +328,16 @@ void updateTask(void *vParam) {
    		tank_stuff->tank->a_vel = 0;
 		}
 
-      //// move tank2
-      //tank2.vel.x += tank2.accel * -sin(tank2.angle * DEG_TO_RAD);
-      //tank2.vel.y += tank2.accel * -cos(tank2.angle * DEG_TO_RAD);
-      //vel = tank2.vel.x * tank2.vel.x + tank2.vel.y * tank2.vel.y;
-      //if (vel > TANK_MAX_VEL) {
-         //tank2.vel.x *= TANK_MAX_VEL / vel;
-         //tank2.vel.y *= TANK_MAX_VEL / vel;
-      //}
-      //tank2.pos.x += tank2.vel.x;
-      //tank2.pos.y += tank2.vel.y;
-//
-      //if (tank2.pos.x - TANK_OFFSET < WALL_EDGE) {
-         //tank2.pos.x += WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //} else if (tank2.pos.x + TANK_OFFSET > SCREEN_W - (WALL_EDGE)) {
-         //tank2.pos.x -= WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //}
-      //if (tank2.pos.y - TANK_OFFSET < WALL_EDGE) {
-         //tank2.pos.y += WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //} else if (tank2.pos.y + TANK_OFFSET > SCREEN_H - (WALL_EDGE)) {
-         //tank2.pos.y -= WALL_BOUNCE;
-         //tank2.vel.x = 0;
-         //tank2.vel.y = 0;
-         //tank2.accel = 0;
-         //tank2.a_vel = 0;
-      //}
-      
-		// move bullets_tank1
+		// move bullets
 		objPrev = NULL;
-		objIter = *(tank_stuff->bullets);//bullets_tank1;
+		objIter = *(tank_stuff->bullets);
 		while (objIter != NULL) {
-			// Kill bullet after a while
-			objIter->life += FRAME_DELAY_MS;
-			//if (objIter->life >= BULLET_LIFE_MS) {
-				//xSemaphoreTake(usartMutex, portMAX_DELAY);
-				//vSpriteDelete(objIter->handle);
-				//if (objPrev != NULL) {
-					//objPrev->next = objIter->next;
-					//vPortFree(objIter);
-					//objIter = objPrev->next;
-				//} else {
-					//*(tank_stuff->bullets) = objIter->next;
-					//vPortFree(objIter);
-					//objIter = *(tank_stuff->bullets);
-				//}
-				//xSemaphoreGive(usartMutex);
-			//} else 
-         {
-            objIter->pos.x += objIter->vel.x;
-            objIter->pos.y += objIter->vel.y;
+         objIter->pos.x += objIter->vel.x;
+         objIter->pos.y += objIter->vel.y;
 
-            if (objIter->pos.x < 0.0) {
-             objIter->pos.x += SCREEN_W;
-            } else if (objIter->pos.x > SCREEN_W) {
-             objIter->pos.x -= SCREEN_W;
-            }
-
-            if (objIter->pos.y < 0.0) {
-             objIter->pos.y += SCREEN_H;
-            } else if (objIter->pos.y > SCREEN_H) {
-             objIter->pos.y -= SCREEN_H;
-            }
-            objPrev = objIter;
-            objIter = objIter->next;
-			}			
+         objPrev = objIter;
+         objIter = objIter->next;
 		}
-//
-      //// move bullets_tank2
-      //objPrev = NULL;
-      //objIter = bullets_tank2;
-      //while (objIter != NULL) {
-         //// Kill bullet after a while
-         //objIter->life += FRAME_DELAY_MS;
-         //if (objIter->life >= BULLET_LIFE_MS) {
-            //xSemaphoreTake(usartMutex, portMAX_DELAY);
-            //vSpriteDelete(objIter->handle);
-            //if (objPrev != NULL) {
-               //objPrev->next = objIter->next;
-               //vPortFree(objIter);
-               //objIter = objPrev->next;
-            //} else {
-               //bullets_tank2 = objIter->next;
-               //vPortFree(objIter);
-               //objIter = bullets_tank2;
-            //}
-            //xSemaphoreGive(usartMutex);
-         //} else {
-            //objIter->pos.x += objIter->vel.x;
-            //objIter->pos.y += objIter->vel.y;
-//
-            //if (objIter->pos.x < 0.0) {
-               //objIter->pos.x += SCREEN_W;
-            //} else if (objIter->pos.x > SCREEN_W) {
-               //objIter->pos.x -= SCREEN_W;
-            //}
-//
-            //if (objIter->pos.y < 0.0) {
-               //objIter->pos.y += SCREEN_H;
-            //} else if (objIter->pos.y > SCREEN_H) {
-               //objIter->pos.y -= SCREEN_H;
-            //}
-            //objPrev = objIter;
-            //objIter = objIter->next;
-         //}
-      //}
 		
 		vTaskDelay(FRAME_DELAY_MS / portTICK_RATE_MS);
 	}
