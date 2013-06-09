@@ -46,6 +46,16 @@ const char* bullet_images[] = {
    "bullet2.png",
    "bullet3.png"};
 
+// Array of number sprite image names
+const char* num_images[] = {
+   "3.png",
+   "2.png",
+   "1.png"};
+// Array of "round" sprite image names
+const char* round_images[] = {
+   "round1.png",
+   "round2.png",
+   "round3.png"};
   
 //represents a point on the screen
 typedef struct {
@@ -112,7 +122,7 @@ typedef struct tank_info{
 #define TANK_SEL_BANNER_SIZE 100
 #define TANK_NOT_SELECTED 0
 #define TANK_SELECTED 1
-
+#define NUM_ROUNDS 3
 
 // Tank Parameters
 #define TANK_MAX_VEL 3.0
@@ -148,6 +158,8 @@ static wall *borders = NULL;
 static object tank1;
 static object tank2;
 
+
+uint8_t p1_score = 0, p2_score = 0, game_round = 0;
 //linked lists for bullets
 static object *bullets_tank1 = NULL;
 static object *bullets_tank2 = NULL;
@@ -547,10 +559,14 @@ void drawTask(void *vParam) {
          vTaskDelete(input2TaskHandle);
          switch(game_status){
             case PLAYER_ONE_WIN:
-               handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               handle = xSpriteCreate("p1_win_round.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               p1_score ++;
+               game_round++;
                break;
             case PLAYER_TWO_WIN:
-               handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               handle = xSpriteCreate("p2_win_round.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               p2_score ++;
+               game_round++;
                break;
             default:
                break;
@@ -558,6 +574,20 @@ void drawTask(void *vParam) {
          vTaskDelay(GAME_RESET_DELAY_MS / portTICK_RATE_MS);
          
          vSpriteDelete(handle);
+         if(game_round >= NUM_ROUNDS)
+         {
+            if(p1_score > p2_score)
+               handle = xSpriteCreate("p1_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+            else
+               handle = xSpriteCreate("p2_win.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 100);
+               
+            _delay_ms(GAME_RESET_DELAY_MS);
+            vSpriteDelete(handle);
+            p1_score = 0;
+            p1_score = 0;
+            game_round = 0;
+            
+         }
          reset();
          init();
          
@@ -625,9 +655,10 @@ void init(void) {
    bullets_tank2 = NULL;
    tankGroup1 = ERROR_HANDLE;
    tankGroup2 = ERROR_HANDLE;
-	
+	xSpriteHandle number; 
    // function to initialize program
-   startup();
+   if(game_round == 0)
+      startup();
 	background = xSpriteCreate("map.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
 	
 	srand(TCNT0);
@@ -761,6 +792,18 @@ void init(void) {
    vGroupAddSprite(tankGroup2, tank2.handle);
    
    
+   number = xSpriteCreate(round_images[game_round], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+   _delay_ms(1000);
+   vSpriteDelete(number);
+   for(uint8_t i = 0; i < 3; i++)
+   {
+      number = xSpriteCreate(num_images[i], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+      _delay_ms(750);
+      vSpriteDelete(number);
+   }   
+   number = xSpriteCreate("go.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 20);
+   _delay_ms(1000);
+   vSpriteDelete(number);   
 }
 
 /*------------------------------------------------------------------------------
@@ -825,6 +868,8 @@ void reset(void) {
    vGroupDelete(tankGroup2);
    //removes the background
    vSpriteDelete(background);
+   
+   
    
    USART_Let_Queue_Empty();
 }
@@ -930,7 +975,6 @@ void startup(void) {
    xSpriteHandle press_start;
    // Print opening start screen
    xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
-   //xSpriteHandle press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
    
    // Initailize SNES Controllers
    snesInit(SNES_2P_MODE);
@@ -983,17 +1027,7 @@ void startup(void) {
             case SNES_A_BTN:
                p1_sel = TANK_SELECTED;
                break;
-            //case SNES_B_BTN:
-               //p1_tank_num = 1;
-               //break;
-            //case SNES_X_BTN:
-               //p1_tank_num = 2;
-               //break;
-            //case SNES_Y_BTN:
-               //p1_tank_num = 3;
-               //break;
             default:
-               //p1_tank_num = TANK_NOT_SELECTED;
                break;
          }
          
@@ -1019,7 +1053,6 @@ void startup(void) {
          }
       }
 
-      
       if(p2_sel == TANK_NOT_SELECTED) {
          controller_data2 = snesData(SNES_P2);
          switch(controller_data2) {
@@ -1037,22 +1070,7 @@ void startup(void) {
             case SNES_A_BTN:
                p2_sel = TANK_SELECTED;
                break;
-            
-            
-            //case SNES_A_BTN:
-               //p2_tank_num = 0;
-               //break;
-            //case SNES_B_BTN:
-               //p2_tank_num = 1;
-               //break;
-            //case SNES_X_BTN:
-               //p2_tank_num = 2;
-               //break;
-            //case SNES_Y_BTN:
-               //p2_tank_num = 3;
-               //break;
             default:
-               //p2_tank_num = TANK_NOT_SELECTED;
                break;
          }
         if((controller_data2 & SNES_RIGHT_BTN)||(controller_data2 & SNES_LEFT_BTN)) {
@@ -1075,8 +1093,7 @@ void startup(void) {
                   break;
             }
          }         
-      }
-      
+      }    
       _delay_ms(150);
    }
    _delay_ms(1000);
