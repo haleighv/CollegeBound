@@ -1,7 +1,7 @@
 /**
  * Author: Matt Cruse, Haleigh Vierra
  *
- * Project: CollegeBound
+ * Project: DeathTanks
  *
  * Description: This is the driver that was designed to use an SNES controller
  * with the STK600. The SNES controller has a shift register that latches
