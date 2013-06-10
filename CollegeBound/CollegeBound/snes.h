@@ -21,10 +21,6 @@
 
 #define SNES_1P_MODE 1
 #define SNES_2P_MODE 2
-//
-//#define SNES_DDR     DDRA
-//#define SNES_PORT    PORTA
-//#define SNES_PIN     PINA
 
 //uses PORTA for Player1
 #define SNES_DDR_P1     DDRA
@@ -61,20 +57,8 @@
 #define SNES_Y_BTN		(1<<10)
 #define SNES_B_BTN		(1<<11)
 
-// #define TIMERCOMP_5_US 8
-// #define TIMERCOMP_12US 33
-// #define TIMERCOMP_16_67MS 33339
 
-// #define TIMER_12US_MODE 0
-// #define TIMER_16_67MS_MODE 1
-// #define TIMER_DATA_CLK_STOP_MODE 2
-//----------------------------------Globals-----------------------------------//
-// uint8_t timer_mode; 
-// uint8_t num_bits_received;
-// uint16_t temp_snes_data; 
-// xQueueHandle xSnesDataQueue;
 //----------------------------Function Prototypes----------------------------//
-
 void snesInit(uint8_t);
 uint16_t snesData(uint8_t);
 #endif // _SNES_H_

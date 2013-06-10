@@ -3,21 +3,31 @@
 *
 * Description: This FreeRTOS program uses the AVR graphics module to display
 *  and track the game state of a battle tanks rendition called "DeathTanks." When
-*  running on the AVR STK600, connect the switches to port B. SW7 turns left,
-*  SW6 turns right, SW1 accelerates forward, and SW0 shoots a bullet. Initially,
-*  five large asteroids are spawned around the player. As the player shoots the
-*  asteroids with bullets, they decompose into three smaller asteroids. When
-*  the player destroys all of the asteroids, they win the game. If the player
-*  collides with an asteroid, they lose the game. In both the winning and losing
-*  conditions, the game pauses for three seconds and displays an appropriate
-*  message. It is recommended to compile the FreeRTOS portion of this project
+*  running on the AVR STK600, connect SNES Controller to port A and B as specified
+*  in snes.h. The left and right buttons are used to control angular adjustment,
+*  the B button is forward acceleration, the A button is reverse acceleration, and
+*  the Y button fires a bullet. The two players each control a tank and fire bullets
+*  at their opponent. A game consists of 3 rounds, best of 3 is the winner. A player
+*  wins a round by shooting their opponent 5 times. The players choose a unique 
+*  tank sprite each game. Each tank sprite also has a unique bullet sprite 
+*  associated with it.
+*  It is recommended to compile the FreeRTOS portion of this project
 *  with heap_2.c instead of heap_1.c since pvPortMalloc and vPortFree are used.
 *
-* Author(s): Doug Gallatin & Andrew Lehmer, Haleigh Vierra & Matt Cruse
+* Author(s): Haleigh Vierra & Matt Cruse
 *
 * Revisions:
+* ?/?/?? Doug Gallatin & Andrew Lehmer Created asteroids base-game 
 * 5/8/12 MAC implemented spawn and create asteroid functions. 
 * 5/8/12 HAV implemented bullet functions and added queue.
+* 6/5/12 HAV implemented multiple controller input tasks
+* 6/8/12 HAV generalized input, update, and bullet task to utilize a tank_info parameter
+* 6/5/12 HAV implemented tank-bullet detection feature
+* 6/8/12 HAV implemented health bar feature
+* 6/8/12 HAV implemented game rounds feature
+* 6/8/12 HAV changed tank sprite selection screen to have hover selection
+* 6/8/12 HAV changed start screen so that both players can press start
+* 6/8/12 HAV changed bullets to only get deleted if collision occurs (no bullet life)
 *******************************************************************************/
 
 #define F_CPU 16000000
@@ -74,6 +84,7 @@ const char* health_images2[] = {
    "p2_health2.png",
    "p2_health1.png",
    "health0.png"};
+   
 //represents a point on the screen
 typedef struct {
 	float x;
@@ -111,15 +122,21 @@ typedef struct tank_info{
 
 #define DEG_TO_RAD M_PI / 180.0
 
+// Screen size
 #define SCREEN_W 960
 #define SCREEN_H 640
 
-#define DEAD_ZONE_OVER_2 120
-
+// Game Parameters
 #define FRAME_DELAY_MS  10
 #define GAME_RESET_DELAY_MS  2000
 #define CONTROLLER_DELAY_MS 100
+#define NUM_ROUNDS 3
+// Game Statuses
+#define IN_PLAY        0
+#define PLAYER_ONE_WIN 1
+#define PLAYER_TWO_WIN 2
 
+// Environment Parameters
 #define WALL_SIZE 50
 #define WALL_WIDTH 19.2
 #define WALL_HEIGHT 12.8
@@ -127,79 +144,74 @@ typedef struct tank_info{
 #define WALL_BOUNCE 5
 #define WALL_EDGE WALL_SIZE / 2.2
 
-#define TANK_SIZE 60
-#define TANK_OFFSET TANK_SIZE / 2.0
-#define NUM_TANK_SPRITES 4
-
-
-#define BULLET_SIZE 20
-#define BULLET_DELAY_MS 1000
-#define BULLET_VEL 8.0
-#define MAX_LIFE 100
-#define DAMAGE 20
-#define HEALTH_BAR_SIZE 150 
-#define HEALTH_BAR_OFFSET_P1 20
-#define HEALTH_BAR_OFFSET_P2 SCREEN_W-5 
-
-#define TANK_SEL_BANNER_SIZE 100
-#define TANK_NOT_SELECTED 0
-#define TANK_SELECTED 1
-#define NUM_ROUNDS 3
-
 // Tank Parameters
 #define TANK_MAX_VEL 3.0
 #define TANK_ACCEL 0.05
 #define TANK_AVEL  1.0
+#define NUM_TANK_SPRITES 4
+#define MAX_LIFE 100
+#define TANK_NOT_SELECTED 0
+#define TANK_SELECTED 1
 
-#define BACKGROUND_AVEL 0.01
+// Bullet Parameters
+#define BULLET_SIZE 20
+#define BULLET_DELAY_MS 1000
+#define BULLET_VEL 8.0
+#define DAMAGE 20
 
-// Game Statuses
-#define IN_PLAY        0
-#define PLAYER_ONE_WIN 1
-#define PLAYER_TWO_WIN 2
+// Graphics Parameters
+#define TANK_SIZE 60
+#define TANK_OFFSET TANK_SIZE / 2.0
+#define HEALTH_BAR_SIZE 150 
+#define HEALTH_BAR_OFFSET_P1 20
+#define HEALTH_BAR_OFFSET_P2 SCREEN_W-5 
+#define TANK_SEL_BANNER_SIZE 100
 
 
+// Task Handlers
 static xTaskHandle input1TaskHandle, input2TaskHandle;
 static xTaskHandle bullet1TaskHandle, bullet2TaskHandle;
 static xTaskHandle update1TaskHandle, update2TaskHandle;
 static xTaskHandle uartTaskHandle;
 
-//Mutex used synchronize usart usage
+//Mutex used to protect usart usage
 static xSemaphoreHandle usartMutex;
-
+//Mutex used to protect SNES controller usage
 static xSemaphoreHandle xSnesMutex;
 
 
-// variables used to track the selected tank sprite for each player
-uint8_t p1_tank_num, p2_tank_num;
-
-
+// Objects
 static wall *walls = NULL;
 static wall *borders = NULL;
 
 static object tank1;
 static object tank2;
 
-
-uint8_t p1_score = 0, p2_score = 0, game_round = 0;
-uint8_t tank1_health_img = 0, tank2_health_img = 0;
-//linked lists for bullets
+   //linked lists for bullets
 static object *bullets_tank1 = NULL;
 static object *bullets_tank2 = NULL;
 
-uint8_t fire_button1 = 0;
-uint8_t fire_button2 = 0;
-
-// Initialize tank_info for all players
+   // Initialize tank_info for all players
 static tank_info tank_info1;
 static tank_info tank_info2;
 
+//Variables
+// variables used to track the selected tank sprite for each player
+uint8_t p1_tank_num, p2_tank_num;
+uint8_t p1_score = 0, p2_score = 0, game_round = 0;
+uint8_t tank1_health_img = 0, tank2_health_img = 0;
+uint8_t fire_button1 = 0;
+uint8_t fire_button2 = 0;
+
+
+// Sprite Handles
 static xGroupHandle wallGroup;
 static xGroupHandle tankGroup1;
 static xGroupHandle tankGroup2;
 static xSpriteHandle background;
 static xSpriteHandle health1, health2;
 
+// Function Prototypes
 void init(void);
 void reset(void);
 wall *createWall(char * image, float x, float y, int16_t angle, wall *nxt, float height, float width);
@@ -209,9 +221,9 @@ void startup(void);
 /*------------------------------------------------------------------------------
  * Function: inputTask
  *
- * Description: This task polls PINB for the current button state to determine
- *  if the player should turn, accelerate, or both. This task never blocks, so
- *  it should run at the lowest priority above the idle task priority.
+ * Description: This task uses the snes controller driver functions from snes.h
+ *  to read in controller data and update a tank's heading and fire button 
+ *  accordingly.
  *
  * param vParam: This parameter is a pointer to a tank_info struct
  *----------------------------------------------------------------------------*/
@@ -306,10 +318,9 @@ void bulletTask(void *vParam) {
  * Function: updateTask
  *
  * Description: This task observes the currently stored velocities for every
- *  game object and updates their position and rotation accordingly. It also
- *  updates the tank's velocities based on its current acceleration and angle.
- *  If a bullet has been in flight for too long, this task will delete it. This
- *  task runs every 10 milliseconds.
+ *  object element in the passed tank_info struct and updates their position and 
+ *  rotation accordingly. It also updates the tank's velocities based on its 
+ *  current acceleration and angle. This task runs every 10 milliseconds.
  *
  * param vParam: This parameter is a pointer to a tank_info struct.
  *----------------------------------------------------------------------------*/
@@ -340,7 +351,7 @@ void updateTask(void *vParam) {
 		tank_stuff->tank->pos.x += tank_stuff->tank->vel.x;
 		tank_stuff->tank->pos.y += tank_stuff->tank->vel.y;
 		
-      // Check if tank is near boundries, and stop it if it hits a wall
+      // Check if tank is near boundaries, and stop it if it hits a wall
 		if (tank_stuff->tank->pos.x - TANK_OFFSET < WALL_EDGE) {
    		tank_stuff->tank->pos.x += WALL_BOUNCE;
    		tank_stuff->tank->vel.x = 0;
@@ -389,7 +400,9 @@ void updateTask(void *vParam) {
  * Description: This task sends the appropriate commands to update the game
  *  graphics every 10 milliseconds for a target frame rate of 100 FPS. It also
  *  checks collisions and performs the proper action based on the types of the
- *  colliding objects.
+ *  colliding objects. If tanks fit walls, they stop; if a tank is shot, it 
+ *  gets damaged. This function also handles the game flow by running 3 rounds
+ *  of the game (for best of 3) then resetting.
  *
  * param vParam: This parameter is not used.
  *----------------------------------------------------------------------------*/
@@ -684,8 +697,10 @@ int main(void) {
 /*------------------------------------------------------------------------------
  * Function: init
  *
- * Description: This function initializes a new game of asteroids. A window
- *  must be created before this function may be called.
+ * Description: This function initializes a new game of tanks. A window
+ *  must be created before this function may be called. It creates the background,
+ *  and starting tank sprites, and calls the startup() function to bring players
+ *  to the start screen and tank selection screen of the game
  *----------------------------------------------------------------------------*/
 void init(void) {
 	bullets_tank1 = NULL;
@@ -834,7 +849,7 @@ void init(void) {
    vGroupAddSprite(tankGroup1, tank1.handle);
    vGroupAddSprite(tankGroup2, tank2.handle);
    
-   
+   // Series of flashing sprites to display the round, and a countdown to gameplay
    number = xSpriteCreate(round_images[game_round], SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W>>1, SCREEN_H>>1, 20);
    _delay_ms(1000);
    vSpriteDelete(number);
@@ -853,22 +868,14 @@ void init(void) {
  * Function: reset
  *
  * Description: This function destroys all game objects in the heap and clears
- *  their respective sprites from the window.
+ *  their respective sprites from the window. Then waits for the usart graphics
+ *  queue to empty.
  *----------------------------------------------------------------------------*/
 void reset(void) {
 	/* Note:
      * You need to free all resources here using a reentrant function provided by
      * the freeRTOS API and clear all sprites from the game window.
-     * Use vGroupDelete for the asteroid group.
-     *
-     * Remember bullets and asteroids are object lists so you should traverse the list
-     * using something like:  
-     *	while (thisObject != NULL) {
-     *		vSpriteDelete(thisObject)
-     *		nextObject = thisObject->next.
-     *		delete thisObject using a reentrant function
-     *		thisObject = nextObject
-     *	}
+     * Use vGroupDelete for the asteroid group. 
      */
 	object *nextObject;
 	wall *nextWall;
@@ -917,6 +924,15 @@ void reset(void) {
    USART_Let_Queue_Empty();
 }
 
+
+/*------------------------------------------------------------------------------
+ * Function: createWall
+ *
+ * Description: This function 
+ *
+ *
+ * Return: wall*: 
+ *----------------------------------------------------------------------------*/
 wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float height, float width) {
    //allocate space for a new wall
    wall *newWall = pvPortMalloc(sizeof(wall));
@@ -1003,28 +1019,44 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num,
    return (newBullet); 
 }
 
+
+/*------------------------------------------------------------------------------
+ * Function: createBullet
+ *
+ * Description: This function displays the start screen, and waits for a player
+ *  to press the start button. Then displays the tank selection screen, where
+ *  each player selects one of four tank sprites using the left and right buttons
+ *  to navigate through the available sprites and the A button to select a sprite.
+ *  Once a player selects a sprite, their hover selection sprite is locked in and
+ *  the global for the player's tank selection is set. This means that a player will
+ *  control this tank sprite until this function is called again. Before exiting,
+ *  this function deletes all sprites that it has generated.
+ *
+ *
+ *----------------------------------------------------------------------------*/
 void startup(void) {
    p1_tank_num = TANK_NOT_SELECTED;
    p2_tank_num = TANK_NOT_SELECTED;
    uint8_t p1_sel = TANK_NOT_SELECTED, p2_sel = TANK_NOT_SELECTED;
-   
    uint16_t controller_data1 = 0;
    uint16_t controller_data2 = 0;
    uint8_t press_start_loop_count = 0;
-   
    xSpriteHandle p1, p2;
    xSpriteHandle press_start;
+   
    // Print opening start screen
    xSpriteHandle start_screen = xSpriteCreate("start_screen.png", SCREEN_W>>1, SCREEN_H>>1, 0, SCREEN_W, SCREEN_H, 0);
    
    // Initailize SNES Controllers
    snesInit(SNES_2P_MODE);
+   
    // Wait for player1 to press start
    while(!((controller_data1 & SNES_STRT_BTN)||(controller_data2 & SNES_STRT_BTN))) {
       controller_data1 = snesData(SNES_P1);
       controller_data2 = snesData(SNES_P2);
       _delay_ms(17);
-
+      
+      // blink "Press start"
       if(press_start_loop_count++ == 30)
          press_start = xSpriteCreate("press_start.png", SCREEN_W>>1, SCREEN_H - (SCREEN_H>>2), 0, SCREEN_W>>1, SCREEN_H>>1, 1);
       else if(press_start_loop_count == 60) {
@@ -1046,12 +1078,14 @@ void startup(void) {
    controller_data2 = 0;
    
    p1_tank_num = p2_tank_num = 0;
+   
+   // Display initial hover selection sprites on tank0
    p1 = xSpriteCreate("p1.png", ((2*p1_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
    p2 = xSpriteCreate("p2.png", ((2*p2_tank_num + 1)*SCREEN_W)/8, SCREEN_H>>1, 0, TANK_SEL_BANNER_SIZE, TANK_SEL_BANNER_SIZE, 1);
+   
    // get a valid tank selection from both controllers
-   while((p1_sel == TANK_NOT_SELECTED) || (p2_sel == TANK_NOT_SELECTED)) {
-      
-      
+   while((p1_sel == TANK_NOT_SELECTED) || (p2_sel == TANK_NOT_SELECTED)) {   
+      // check if valid button is pressed
       if(p1_sel == TANK_NOT_SELECTED) {
          controller_data1 = snesData(SNES_P1);
          switch(controller_data1) {
@@ -1072,7 +1106,7 @@ void startup(void) {
             default:
                break;
          }
-         
+         // Display update hover selection sprites over the chosen tank
          if((controller_data1 & SNES_RIGHT_BTN)||(controller_data1 & SNES_LEFT_BTN)) {
             vSpriteDelete(p1);
             switch(p1_tank_num) {
@@ -1094,7 +1128,7 @@ void startup(void) {
             }
          }
       }
-
+      // check if valid button is pressed
       if(p2_sel == TANK_NOT_SELECTED) {
          controller_data2 = snesData(SNES_P2);
          switch(controller_data2) {
@@ -1115,6 +1149,7 @@ void startup(void) {
             default:
                break;
          }
+         // Display update hover selection sprites over the chosen tank
         if((controller_data2 & SNES_RIGHT_BTN)||(controller_data2 & SNES_LEFT_BTN)) {
             vSpriteDelete(p2);
             switch(p2_tank_num) {

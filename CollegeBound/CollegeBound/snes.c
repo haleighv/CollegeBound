@@ -11,15 +11,12 @@
  #include "snes.h"
  
 /**
- * This function initializes the use of PORTB to interface
- * with the SNES controller. See the #define section for which
+ * This function initializes the use of PORT A, B, or both A & B to interface
+ * with the SNES controller of choice. See the #define section for which
  * pins are tied to which signal.
  **/
 void snesInit(uint8_t num_players)
 {
-	// Create Queue for snes controller data
-	//xSnesDataQueue = xQueueCreate( 1, sizeof(uint16_t));
-	
 	// Configure Port for player1
 	if(num_players == SNES_P1)
 	{
@@ -28,7 +25,7 @@ void snesInit(uint8_t num_players)
 		SNES_PORT_P1 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
 	}
 	
-	// Configure Port for player2 and player 1
+	// Configure Port for player2 
 	else if(num_players == SNES_P2)
 	{		
 		//data = input; clock = output; latch = output
@@ -45,42 +42,12 @@ void snesInit(uint8_t num_players)
       SNES_DDR_P2 = ~(1<<DATA) | (1<<CLK) | (1<<LATCH);
       SNES_PORT_P2 = ~(1<<LATCH) | (1<<CLK);    //latch idle low, clk idle high
    }
-
-
-
-	//timer_mode = TIMER_16_67MS_MODE;
-	//num_bits_received = 0;
-
-	//// Initialize OCR4A to clear every 16.67ms
-	//OCR4A = TIMER_16_67MS_MODE;
-	//OCR4B = 0;
-//
-	//// Enable CTC on timer 4 with prescaler of 8
-	//TCCR4B |= (1<<WGM42)|(1<<CS41);
-//
-	//// Enable interrupt vector on OC4A
-	//TIMSK4 |= (1<<OCIE4A);
 }
 
 uint16_t snesData(uint8_t player_num)
 {	
 	uint8_t i;
 	uint16_t data = 0;
-	//volatile uint8_t* SNES_PORT;
-	//volatile uint8_t* SNES_PIN;
-	//
-	//if(player_num == 1)
-	//{
-		//SNES_PORT = &SNES_PORT_P1;
-		//SNES_PIN = &SNES_PORT_P1;
-	//}
-	//else if(player_num == 2)
-	//{
-		//SNES_PORT = &SNES_PORT_P2;
-		//SNES_PIN = &SNES_PORT_P2;
-	//}
-	//else
-		//return; 
 
    switch(player_num)
    {
