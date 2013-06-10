@@ -176,8 +176,7 @@ static xTaskHandle uartTaskHandle;
 
 //Mutex used to protect usart usage
 static xSemaphoreHandle usartMutex;
-//Mutex used to protect SNES controller usage
-static xSemaphoreHandle xSnesMutex;
+
 
 
 // Objects
@@ -241,7 +240,6 @@ void inputTask(void *vParam) {
 
 	uint16_t controller_data;
    while (1) {
-      xSemaphoreTake(xSnesMutex, portMAX_DELAY);
       
       controller_data = snesData(tank_stuff->number);
 
@@ -264,7 +262,6 @@ void inputTask(void *vParam) {
       if(controller_data & SNES_Y_BTN)
           *(tank_stuff->fire_button) = 1;
 
-      xSemaphoreGive(xSnesMutex);
 
       vTaskDelay(CONTROLLER_DELAY_MS/portTICK_RATE_MS);
    }
