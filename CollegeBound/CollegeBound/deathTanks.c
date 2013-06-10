@@ -17,17 +17,22 @@
 * Author(s): Haleigh Vierra & Matt Cruse
 *
 * Revisions:
-* ?/?/?? Doug Gallatin & Andrew Lehmer Created asteroids base-game 
-* 5/8/12 MAC implemented spawn and create asteroid functions. 
-* 5/8/12 HAV implemented bullet functions and added queue.
+* 6/5/12 HAV implemented bullet functions and added queue.
 * 6/5/12 HAV implemented multiple controller input tasks
-* 6/8/12 HAV generalized input, update, and bullet task to utilize a tank_info parameter
 * 6/5/12 HAV implemented tank-bullet detection feature
+* 6/5/12 MAC designed map layout
+* 6/5/12 MAC implemented wall collision detection
+* 6/5/12 MAC implemented border collision handling
+* 
+* 6/8/12 HAV generalized input, update, and bullet task to utilize a tank_info parameter
 * 6/8/12 HAV implemented health bar feature
 * 6/8/12 HAV implemented game rounds feature
 * 6/8/12 HAV changed tank sprite selection screen to have hover selection
 * 6/8/12 HAV changed start screen so that both players can press start
 * 6/8/12 HAV changed bullets to only get deleted if collision occurs (no bullet life)
+* 6/8/12 MAC changed environment creation to be done in separate function
+* 6/8/12 MAC removed unnecessary parameters from wall structure
+* 6/8/12 MAC added #defines for environment creation
 *******************************************************************************/
 
 #define F_CPU 16000000
@@ -108,7 +113,6 @@ typedef struct object_s {
 typedef struct wall {
    xSpriteHandle handle;
    point topLeft, botRight;
-   int16_t angle;
    struct wall *next;
 } wall;
 
@@ -143,6 +147,12 @@ typedef struct tank_info{
 #define WALL_BLOCK 2
 #define WALL_BOUNCE 5
 #define WALL_EDGE WALL_SIZE / 2.2
+#define WALL_SINGLE_TILE 1
+#define WALL_MID_SIZE 8
+#define WALL_SMALL_SIZE 4
+#define WALL_SMALL_POS 2.5
+#define WALL_BLOCK_H_POS 1.5
+#define WALL_BLOCK_W_POS 4.5
 
 // Tank Parameters
 #define TANK_MAX_VEL 3.0
@@ -167,7 +177,6 @@ typedef struct tank_info{
 #define HEALTH_BAR_OFFSET_P2 SCREEN_W-5 
 #define TANK_SEL_BANNER_SIZE 100
 
-
 // Task Handlers
 static xTaskHandle input1TaskHandle, input2TaskHandle;
 static xTaskHandle bullet1TaskHandle, bullet2TaskHandle;
@@ -177,25 +186,23 @@ static xTaskHandle uartTaskHandle;
 //Mutex used to protect usart usage
 static xSemaphoreHandle usartMutex;
 
-
-
-// Objects
+//linked list for walls
 static wall *walls = NULL;
 static wall *borders = NULL;
 
+// Objects
 static object tank1;
 static object tank2;
 
-   //linked lists for bullets
+//linked lists for bullets
 static object *bullets_tank1 = NULL;
 static object *bullets_tank2 = NULL;
 
-   // Initialize tank_info for all players
+// Initialize tank_info for all players
 static tank_info tank_info1;
 static tank_info tank_info2;
 
-//Variables
-// variables used to track the selected tank sprite for each player
+// Variables used to track the selected tank sprite for each player
 uint8_t p1_tank_num, p2_tank_num;
 uint8_t p1_score = 0, p2_score = 0, game_round = 0;
 uint8_t tank1_health_img = 0, tank2_health_img = 0;
@@ -213,9 +220,10 @@ static xSpriteHandle health1, health2;
 // Function Prototypes
 void init(void);
 void reset(void);
-wall *createWall(char * image, float x, float y, int16_t angle, wall *nxt, float height, float width);
+wall *createWall(char * image, float x, float y, wall *nxt, float height, float width);
 object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num, int16_t angle, object *nxt);
 void startup(void);
+void createEnvironment(void);
 
 /*------------------------------------------------------------------------------
  * Function: inputTask
@@ -427,7 +435,8 @@ void drawTask(void *vParam) {
 	for (;;) {
 		xSemaphoreTake(usartMutex, portMAX_DELAY);
 		if (uCollide(tank1.handle, wallGroup, &hit, 1) > 0) {
-   		wallPrev = NULL;
+   		//find which wall was collided with
+         wallPrev = NULL;
    		wallIter = walls;
    		while (wallIter != NULL) {
             if (wallIter->handle == hit) {
@@ -460,16 +469,20 @@ void drawTask(void *vParam) {
             }
          }
       }
+      
+      //adjust tank1
 		vSpriteSetRotation(tank1.handle, (uint16_t)tank1.angle);
 		vSpriteSetPosition(tank1.handle, (uint16_t)tank1.pos.x, (uint16_t)tank1.pos.y);
       
       if (uCollide(tank2.handle, wallGroup, &hit, 1) > 0) {
          wallPrev = NULL;
          wallIter = walls;
+         //find wall collided with
          while (wallIter != NULL) {
             if (wallIter->handle == hit) {
                topLeft = wallIter->topLeft;
                botRight = wallIter->botRight;
+               
                //checks collision on x-axis
                if (tank2.pos.x > topLeft.x && tank2.pos.x < botRight.x) {
                   if (abs(tank2.pos.y - topLeft.y) < abs(tank2.pos.y - botRight.y))
@@ -498,6 +511,8 @@ void drawTask(void *vParam) {
             }
          }
       }
+      
+      //adjust tank2
       vSpriteSetRotation(tank2.handle, (uint16_t)tank2.angle);
       vSpriteSetPosition(tank2.handle, (uint16_t)tank2.pos.x, (uint16_t)tank2.pos.y);
       
@@ -669,7 +684,6 @@ int main(void) {
       .fire_button = &fire_button2,
       .number = 2};
    
-   xSnesMutex = xSemaphoreCreateMutex();
 	usartMutex = xSemaphoreCreateMutex();
 	
 	vWindowCreate(SCREEN_W, SCREEN_H);
@@ -706,8 +720,8 @@ void init(void) {
    tankGroup2 = ERROR_HANDLE;
 	xSpriteHandle number; 
    
-   tank1.life =MAX_LIFE;
-   tank2.life =MAX_LIFE;
+   tank1.life = MAX_LIFE;
+   tank2.life = MAX_LIFE;
    // function to initialize program
    if(game_round == 0)
       startup();
@@ -761,88 +775,8 @@ void init(void) {
    health1 = xSpriteCreate(health_images1[tank1_health_img], HEALTH_BAR_OFFSET_P1, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
    health2 = xSpriteCreate(health_images2[tank2_health_img],HEALTH_BAR_OFFSET_P2, SCREEN_H>>3, 0, HEALTH_BAR_SIZE, HEALTH_BAR_SIZE, 20);
    
-   borders = createWall(
-      "width_wall.bmp",
-      SCREEN_W >> 1,
-      0,
-      0,
-      borders,
-      1,
-      WALL_WIDTH);
-      
-   borders = createWall(
-      "width_wall.bmp",
-      SCREEN_W >> 1,
-      SCREEN_H,
-      0,
-      borders,
-      1,
-      WALL_WIDTH);
+   createEnvironment();
    
-   borders = createWall(
-      "side_wall.bmp",
-      0,
-      SCREEN_H >> 1,
-      0,
-      borders,
-      WALL_HEIGHT,
-      1);
-   
-   borders = createWall(
-      "side_wall.bmp",
-      SCREEN_W,
-      SCREEN_H >> 1,
-      0,
-      borders,
-      WALL_HEIGHT,
-      1);
-      
-   walls = createWall(
-      "wall.bmp",
-      SCREEN_W >> 1,
-      SCREEN_H >> 1,
-      0,
-      walls,
-      8,
-      1);
-      
-   walls = createWall(
-      "small_wall.bmp",
-      SCREEN_W - 2.5 * WALL_SIZE,
-      SCREEN_H >> 2,
-      0,
-      walls,
-      1,
-      4);
-      
-   walls = createWall(
-      "small_wall.bmp",
-      2.5 * WALL_SIZE,
-      SCREEN_H - (SCREEN_H >> 2),
-      0,
-      walls,
-      1,
-      4);
-      
-   walls = createWall(
-      "block_wall.bmp",
-      SCREEN_W - 4.5 * WALL_SIZE,
-      SCREEN_H - 1.5 * WALL_SIZE,
-      0,
-      walls,
-      WALL_BLOCK,
-      WALL_BLOCK);
-      
-   walls = createWall(
-      "block_wall.bmp",
-      4.5 * WALL_SIZE,
-      1.5 * WALL_SIZE,
-      0,
-      walls,
-      WALL_BLOCK,
-      WALL_BLOCK);
-   fire_button2 = 0;   
-
    vGroupAddSprite(tankGroup1, tank1.handle);
    vGroupAddSprite(tankGroup2, tank2.handle);
    
@@ -899,6 +833,7 @@ void reset(void) {
    	vPortFree(bullets_tank1);
    	bullets_tank1 = nextObject;
    }
+   
 	// removes bullets_tank2
 	while (bullets_tank2 != NULL) {
    	vSpriteDelete(bullets_tank2->handle);
@@ -916,8 +851,6 @@ void reset(void) {
    //removes the background
    vSpriteDelete(background);
    
-   
-   
    USART_Let_Queue_Empty();
 }
 
@@ -925,12 +858,17 @@ void reset(void) {
 /*------------------------------------------------------------------------------
  * Function: createWall
  *
- * Description: This function 
+ * Description: This function creates a new wall
  *
- *
+ * param *image: The string for the file to be used as the walls sprite.
+ * param x: The center x position of the new wall sprite.
+ * param y: The center y position of the new wall sprite.
+ * param nxt: A pointer to the next wall in a linked list of walls.
+ * param height: The new walls height in tiles (50x50 pixels).
+ * param width: The new walls width in tiles (50x50 pixels).
  * Return: wall*: 
  *----------------------------------------------------------------------------*/
-wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float height, float width) {
+wall *createWall(char *image, float x, float y, wall *nxt, float height, float width) {
    //allocate space for a new wall
    wall *newWall = pvPortMalloc(sizeof(wall));
    
@@ -939,7 +877,7 @@ wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float 
       image,                  //reference to png filename
       x,                      //xPos
       y,                      //yPos
-      angle,                  //rAngle
+      0,                      //rAngle
       WALL_SIZE * width,      //width
       WALL_SIZE * height,     //height
       1);                     //depth
@@ -947,19 +885,16 @@ wall *createWall(char *image, float x, float y, int16_t angle, wall *nxt, float 
    //set positions
    newWall->topLeft.x = 1 + x - ((width / 2) * WALL_SIZE);
    newWall->topLeft.y = 1 + y - ((height / 2) * WALL_SIZE);
-   //xSpriteCreate("bullet1.png", newWall->topLeft.x, newWall->topLeft.y, 0, tank_SIZE, tank_SIZE, 15);
    
    newWall->botRight.x = x + ((width / 2) * WALL_SIZE);
    newWall->botRight.y = y + ((height / 2) * WALL_SIZE);
-   //xSpriteCreate("bullet2.png", newWall->botRight.x, newWall->botRight.y, 0, tank_SIZE, tank_SIZE, 16);
-   //set angle
-   newWall->angle = angle;
-   //link to asteroids list
+   
+   //link to list
    newWall->next = nxt;
    //add to asteroids sprite group
    vGroupAddSprite(wallGroup, newWall->handle);
    
-   //return pointer to new asteroid
+   //return pointer to new wall
    return newWall;
 }
 
@@ -1018,7 +953,7 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num,
 
 
 /*------------------------------------------------------------------------------
- * Function: createBullet
+ * Function: startup
  *
  * Description: This function displays the start screen, and waits for a player
  *  to press the start button. Then displays the tank selection screen, where
@@ -1028,8 +963,6 @@ object *createBullet(float x, float y, float velx, float vely, uint8_t tank_num,
  *  the global for the player's tank selection is set. This means that a player will
  *  control this tank sprite until this function is called again. Before exiting,
  *  this function deletes all sprites that it has generated.
- *
- *
  *----------------------------------------------------------------------------*/
 void startup(void) {
    p1_tank_num = TANK_NOT_SELECTED;
@@ -1175,4 +1108,86 @@ void startup(void) {
    vSpriteDelete(p2);
    vSpriteDelete(select_screen);
 }
-																															
+
+/*------------------------------------------------------------------------------
+ * Function: createEnvironment
+ *
+ * Description: This function creates all the walls that make up the
+ *  environment of the DeathTanks map. 4 borders are created that are only
+ *  halfway on the visible screen. Then the middle wall, two small walls,
+ *  and the two blocks are added.
+ *----------------------------------------------------------------------------*/
+ void createEnvironment(void) {
+    
+    borders = createWall(
+       "width_wall.bmp",
+       SCREEN_W >> 1,
+       0,
+       borders,
+       WALL_SINGLE_TILE,
+       WALL_WIDTH);
+    
+    borders = createWall(
+       "width_wall.bmp",
+       SCREEN_W >> 1,
+       SCREEN_H,
+       borders,
+       WALL_SINGLE_TILE,
+       WALL_WIDTH);
+    
+    borders = createWall(
+       "side_wall.bmp",
+       0,
+       SCREEN_H >> 1,
+       borders,
+       WALL_HEIGHT,
+       WALL_SINGLE_TILE);
+    
+    borders = createWall(
+       "side_wall.bmp",
+       SCREEN_W,
+       SCREEN_H >> 1,
+       borders,
+       WALL_HEIGHT,
+       WALL_SINGLE_TILE);
+    
+    walls = createWall(
+       "wall.bmp",
+       SCREEN_W >> 1,
+       SCREEN_H >> 1,
+       walls,
+       WALL_MID_SIZE,
+       WALL_SINGLE_TILE);
+    
+    walls = createWall(
+       "small_wall.bmp",
+       SCREEN_W - WALL_SMALL_POS * WALL_SIZE,
+       SCREEN_H >> 2,
+       walls,
+       WALL_SINGLE_TILE,
+       WALL_SMALL_SIZE);
+    
+    walls = createWall(
+       "small_wall.bmp",
+       WALL_SMALL_POS * WALL_SIZE,
+       SCREEN_H - (SCREEN_H >> 2),
+       walls,
+       WALL_SINGLE_TILE,
+       WALL_SMALL_SIZE);
+    
+    walls = createWall(
+       "block_wall.bmp",
+       SCREEN_W - WALL_BLOCK_W_POS * WALL_SIZE,
+       SCREEN_H - WALL_BLOCK_H_POS * WALL_SIZE,
+       walls,
+       WALL_BLOCK,
+       WALL_BLOCK);
+    
+    walls = createWall(
+       "block_wall.bmp",
+       WALL_BLOCK_W_POS * WALL_SIZE,
+       WALL_BLOCK_H_POS * WALL_SIZE,
+       walls,
+       WALL_BLOCK,
+       WALL_BLOCK);
+ }
